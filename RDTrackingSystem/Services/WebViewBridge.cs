@@ -2915,4 +2915,1074 @@ public class WebViewBridge
             });
         }
     }
+
+    // ========== 资产 API ==========
+    public string GetAssets()
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo("GetAssets() 开始执行", "WebViewBridge");
+        
+        try
+        {
+            if (_context == null)
+            {
+                return JsonConvert.SerializeObject(new List<object>(), new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var assets = _context.Assets
+                .Include(a => a.Versions)
+                .Include(a => a.ProjectRelations)
+                .ToList();
+
+            var result = assets.Select(a => new
+            {
+                id = a.Id,
+                name = a.Name,
+                type = a.Type,
+                maturity = a.Maturity,
+                ownerId = a.OwnerId,
+                ownerName = a.OwnerName,
+                description = a.Description,
+                tags = !string.IsNullOrEmpty(a.Tags) ? JsonConvert.DeserializeObject<string[]>(a.Tags) : Array.Empty<string>(),
+                reuseCount = a.ReuseCount,
+                relatedProjectIds = !string.IsNullOrEmpty(a.RelatedProjectIds) ? JsonConvert.DeserializeObject<string[]>(a.RelatedProjectIds) : Array.Empty<string>(),
+                createdAt = a.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
+                updatedAt = a.UpdatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
+                versionCount = a.Versions.Count,
+                latestVersion = a.Versions.OrderByDescending(v => v.VersionDate).FirstOrDefault()?.Version
+            }).ToList();
+
+            return JsonConvert.SerializeObject(result, Formatting.None, new JsonSerializerSettings
+            {
+                NullValueHandling = NullValueHandling.Ignore,
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"获取资产列表失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new List<object>(), new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
+    public string GetAsset(string id)
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo($"GetAsset() 开始执行，ID: {id}", "WebViewBridge");
+        
+        try
+        {
+            if (_context == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "数据库上下文为空" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var asset = _context.Assets
+                .Include(a => a.Versions.OrderByDescending(v => v.VersionDate))
+                .Include(a => a.ProjectRelations)
+                .ThenInclude(apr => apr.Project)
+                .FirstOrDefault(a => a.Id == id);
+
+            if (asset == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "资产不存在" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var result = new
+            {
+                id = asset.Id,
+                name = asset.Name,
+                type = asset.Type,
+                maturity = asset.Maturity,
+                ownerId = asset.OwnerId,
+                ownerName = asset.OwnerName,
+                description = asset.Description,
+                tags = !string.IsNullOrEmpty(asset.Tags) ? JsonConvert.DeserializeObject<string[]>(asset.Tags) : Array.Empty<string>(),
+                reuseCount = asset.ReuseCount,
+                relatedProjectIds = !string.IsNullOrEmpty(asset.RelatedProjectIds) ? JsonConvert.DeserializeObject<string[]>(asset.RelatedProjectIds) : Array.Empty<string>(),
+                createdAt = asset.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
+                updatedAt = asset.UpdatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
+                versions = asset.Versions.Select(v => new
+                {
+                    id = v.Id,
+                    version = v.Version,
+                    changeReason = v.ChangeReason,
+                    qualityChanges = v.QualityChanges,
+                    technicalDebt = v.TechnicalDebt,
+                    changedBy = v.ChangedBy,
+                    qualityScore = v.QualityScore,
+                    defectDensity = v.DefectDensity,
+                    changeFrequency = v.ChangeFrequency,
+                    regressionCost = v.RegressionCost,
+                    maintenanceBurden = v.MaintenanceBurden,
+                    versionDate = v.VersionDate.ToString("yyyy-MM-dd HH:mm:ss")
+                }).ToList(),
+                projectRelations = asset.ProjectRelations.Select(apr => new
+                {
+                    id = apr.Id,
+                    projectId = apr.ProjectId,
+                    projectName = apr.Project?.ProjectName,
+                    relationType = apr.RelationType,
+                    version = apr.Version,
+                    notes = apr.Notes,
+                    createdAt = apr.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss")
+                }).ToList()
+            };
+
+            return JsonConvert.SerializeObject(result, Formatting.None, new JsonSerializerSettings
+            {
+                NullValueHandling = NullValueHandling.Ignore,
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"获取资产详情失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new { error = ex.Message }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
+    public string CreateAsset(string assetDataJson)
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo("CreateAsset() 开始执行", "WebViewBridge");
+        
+        try
+        {
+            if (_context == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "数据库上下文为空" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            // 确保数据库架构是最新的（创建缺失的表）
+            try
+            {
+                DatabaseSchemaMigrator.MigrateSchema();
+            }
+            catch (Exception migrateEx)
+            {
+                logger.LogWarning($"架构迁移失败，继续执行: {migrateEx.Message}", "WebViewBridge");
+            }
+
+            var assetData = JsonConvert.DeserializeObject<dynamic>(assetDataJson);
+            if (assetData == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "资产数据为空" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            string? ownerId = assetData.ownerId?.ToString();
+            var user = !string.IsNullOrEmpty(ownerId) ? _context.Users.FirstOrDefault(u => u.Id == ownerId) : null;
+
+            var asset = new Asset
+            {
+                Id = assetData.id?.ToString() ?? Guid.NewGuid().ToString(),
+                Name = assetData.name?.ToString() ?? string.Empty,
+                Type = assetData.type?.ToString() ?? string.Empty,
+                Maturity = assetData.maturity?.ToString() ?? "试验",
+                OwnerId = assetData.ownerId?.ToString(),
+                OwnerName = user?.Name,
+                Description = assetData.description?.ToString(),
+                Tags = assetData.tags != null ? JsonConvert.SerializeObject(assetData.tags) : null,
+                ReuseCount = 0,
+                RelatedProjectIds = null,
+                CreatedAt = DateTime.Now,
+                UpdatedAt = DateTime.Now
+            };
+
+            _context.Assets.Add(asset);
+            _context.SaveChanges();
+
+            return JsonConvert.SerializeObject(new { id = asset.Id, message = "资产创建成功" }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"创建资产失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new { error = ex.Message }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
+    public string UpdateAsset(string id, string assetDataJson)
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo($"UpdateAsset() 开始执行，ID: {id}", "WebViewBridge");
+        
+        try
+        {
+            if (_context == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "数据库上下文为空" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var asset = _context.Assets.Find(id);
+            if (asset == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "资产不存在" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var assetData = JsonConvert.DeserializeObject<dynamic>(assetDataJson);
+            if (assetData == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "资产数据为空" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            string? ownerId = assetData.ownerId?.ToString();
+            var user = !string.IsNullOrEmpty(ownerId) ? _context.Users.FirstOrDefault(u => u.Id == ownerId) : null;
+
+            asset.Name = assetData.name?.ToString() ?? asset.Name;
+            asset.Type = assetData.type?.ToString() ?? asset.Type;
+            asset.Maturity = assetData.maturity?.ToString() ?? asset.Maturity;
+            asset.OwnerId = assetData.ownerId?.ToString();
+            asset.OwnerName = user?.Name;
+            asset.Description = assetData.description?.ToString();
+            asset.Tags = assetData.tags != null ? JsonConvert.SerializeObject(assetData.tags) : asset.Tags;
+            asset.UpdatedAt = DateTime.Now;
+
+            _context.SaveChanges();
+
+            return JsonConvert.SerializeObject(new { message = "资产更新成功" }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"更新资产失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new { error = ex.Message }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
+    public string DeleteAsset(string id)
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo($"DeleteAsset() 开始执行，ID: {id}", "WebViewBridge");
+        
+        try
+        {
+            if (_context == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "数据库上下文为空" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var asset = _context.Assets.Find(id);
+            if (asset == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "资产不存在" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            _context.Assets.Remove(asset);
+            _context.SaveChanges();
+
+            return JsonConvert.SerializeObject(new { message = "资产已删除" }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"删除资产失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new { error = ex.Message }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
+    public string CreateAssetVersion(string assetId, string versionDataJson)
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo($"CreateAssetVersion() 开始执行，AssetID: {assetId}", "WebViewBridge");
+        
+        try
+        {
+            if (_context == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "数据库上下文为空" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var asset = _context.Assets.Find(assetId);
+            if (asset == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "资产不存在" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var versionData = JsonConvert.DeserializeObject<dynamic>(versionDataJson);
+            if (versionData == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "版本数据为空" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            // 解析版本日期
+            DateTime versionDate = DateTime.Now;
+            DateTime parsedDate = DateTime.Now;
+            if (versionData.versionDate != null && DateTime.TryParse(versionData.versionDate.ToString(), out parsedDate))
+            {
+                versionDate = parsedDate;
+            }
+
+            var version = new AssetVersion
+            {
+                Id = versionData.id?.ToString() ?? Guid.NewGuid().ToString(),
+                AssetId = assetId,
+                Version = versionData.version?.ToString() ?? string.Empty,
+                ChangeReason = versionData.changeReason?.ToString(),
+                QualityChanges = versionData.qualityChanges?.ToString(),
+                TechnicalDebt = versionData.technicalDebt?.ToString(),
+                ChangedBy = versionData.changedBy?.ToString(),
+                QualityScore = versionData.qualityScore != null ? (double?)Convert.ToDouble(versionData.qualityScore) : null,
+                DefectDensity = versionData.defectDensity != null ? (double?)Convert.ToDouble(versionData.defectDensity) : null,
+                ChangeFrequency = versionData.changeFrequency != null ? (double?)Convert.ToDouble(versionData.changeFrequency) : null,
+                RegressionCost = versionData.regressionCost != null ? (double?)Convert.ToDouble(versionData.regressionCost) : null,
+                MaintenanceBurden = versionData.maintenanceBurden != null ? (double?)Convert.ToDouble(versionData.maintenanceBurden) : null,
+                VersionDate = versionDate,
+                CreatedAt = DateTime.Now
+            };
+
+            _context.AssetVersions.Add(version);
+            _context.SaveChanges();
+
+            return JsonConvert.SerializeObject(new { id = version.Id, message = "资产版本创建成功" }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"创建资产版本失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new { error = ex.Message }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
+    public string CreateAssetProjectRelation(string relationDataJson)
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo("CreateAssetProjectRelation() 开始执行", "WebViewBridge");
+        
+        try
+        {
+            if (_context == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "数据库上下文为空" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var relationData = JsonConvert.DeserializeObject<dynamic>(relationDataJson);
+            if (relationData == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "关系数据为空" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            string assetId = relationData.assetId?.ToString() ?? string.Empty;
+            string projectId = relationData.projectId?.ToString() ?? string.Empty;
+            string relationType = relationData.relationType?.ToString() ?? "used";
+
+            if (string.IsNullOrEmpty(assetId) || string.IsNullOrEmpty(projectId))
+            {
+                return JsonConvert.SerializeObject(new { error = "资产ID和项目ID不能为空" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var asset = _context.Assets.Find(assetId);
+            if (asset == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "资产不存在" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var project = _context.Projects.Find(projectId);
+            if (project == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "项目不存在" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            // 检查是否已存在相同关系
+            var existingRelation = _context.AssetProjectRelations
+                .FirstOrDefault(apr => apr.AssetId == assetId && apr.ProjectId == projectId && apr.RelationType == relationType);
+
+            if (existingRelation != null)
+            {
+                existingRelation.Version = relationData.version?.ToString();
+                existingRelation.Notes = relationData.notes?.ToString();
+                _context.SaveChanges();
+                return JsonConvert.SerializeObject(new { id = existingRelation.Id, message = "项目关系更新成功" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var relation = new AssetProjectRelation
+            {
+                Id = relationData.id?.ToString() ?? Guid.NewGuid().ToString(),
+                AssetId = assetId,
+                ProjectId = projectId,
+                RelationType = relationType,
+                Version = relationData.version?.ToString(),
+                Notes = relationData.notes?.ToString(),
+                CreatedAt = DateTime.Now
+            };
+
+            _context.AssetProjectRelations.Add(relation);
+
+            // 更新资产的复用次数和关联项目列表
+            asset.ReuseCount = _context.AssetProjectRelations
+                .Where(apr => apr.AssetId == assetId && apr.RelationType == "used")
+                .Count();
+
+            var relatedProjectIds = _context.AssetProjectRelations
+                .Where(apr => apr.AssetId == assetId)
+                .Select(apr => apr.ProjectId)
+                .Distinct()
+                .ToList();
+            asset.RelatedProjectIds = JsonConvert.SerializeObject(relatedProjectIds);
+
+            _context.SaveChanges();
+
+            return JsonConvert.SerializeObject(new { id = relation.Id, message = "项目关系创建成功" }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"创建项目关系失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new { error = ex.Message }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
+    public string GetAssetsByProject(string projectId)
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo($"GetAssetsByProject() 开始执行，ProjectID: {projectId}", "WebViewBridge");
+        
+        try
+        {
+            if (_context == null)
+            {
+                return JsonConvert.SerializeObject(new List<object>(), new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var relations = _context.AssetProjectRelations
+                .Where(apr => apr.ProjectId == projectId)
+                .Include(apr => apr.Asset)
+                .ToList();
+
+            var result = relations.Select(apr => new
+            {
+                id = apr.Id,
+                assetId = apr.AssetId,
+                assetName = apr.Asset?.Name,
+                assetType = apr.Asset?.Type,
+                relationType = apr.RelationType,
+                version = apr.Version,
+                notes = apr.Notes,
+                createdAt = apr.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss")
+            }).ToList();
+
+            return JsonConvert.SerializeObject(result, Formatting.None, new JsonSerializerSettings
+            {
+                NullValueHandling = NullValueHandling.Ignore,
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"获取项目资产失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new List<object>(), new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
+    public string GetAssetHealth(string assetId)
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo($"GetAssetHealth() 开始执行，AssetID: {assetId}", "WebViewBridge");
+        
+        try
+        {
+            if (_context == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "数据库上下文为空" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var asset = _context.Assets
+                .Include(a => a.Versions)
+                .Include(a => a.ProjectRelations)
+                .FirstOrDefault(a => a.Id == assetId);
+
+            if (asset == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "资产不存在" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            // 计算健康度指标
+            var totalProjects = _context.Projects.Count();
+            var reuseRate = totalProjects > 0 ? (double)asset.ReuseCount / totalProjects : 0.0;
+
+            var latestVersion = asset.Versions.OrderByDescending(v => v.VersionDate).FirstOrDefault();
+            var defectDensity = latestVersion?.DefectDensity ?? 0.0;
+
+            var monthsSinceCreation = Math.Max(1, (DateTime.Now - asset.CreatedAt).TotalDays / 30);
+            var changeFrequency = asset.Versions.Count / monthsSinceCreation;
+
+            var regressionCost = latestVersion?.RegressionCost ?? 0.0;
+            var maintenanceBurden = latestVersion?.MaintenanceBurden ?? 0.0;
+
+            var reuseScore = Math.Min(100, reuseRate * 100 * 10);
+            var defectScore = Math.Max(0, 100 - defectDensity * 10);
+            var changeScore = changeFrequency > 0 && changeFrequency < 5 ? 100 : Math.Max(0, 100 - (changeFrequency - 5) * 10);
+            var regressionScore = Math.Max(0, 100 - regressionCost);
+            var maintenanceScore = Math.Max(0, 100 - maintenanceBurden);
+
+            var healthScore = reuseScore * 0.3 + defectScore * 0.25 + changeScore * 0.15 + regressionScore * 0.15 + maintenanceScore * 0.15;
+
+            var result = new
+            {
+                reuseRate = Math.Round(reuseRate, 4),
+                defectDensity = Math.Round(defectDensity, 2),
+                changeFrequency = Math.Round(changeFrequency, 2),
+                regressionCost = Math.Round(regressionCost, 2),
+                maintenanceBurden = Math.Round(maintenanceBurden, 2),
+                healthScore = Math.Round(healthScore, 2)
+            };
+
+            // 保存健康度快照
+            var snapshot = new AssetHealthMetrics
+            {
+                Id = Guid.NewGuid().ToString(),
+                AssetId = assetId,
+                ReuseRate = result.reuseRate,
+                DefectDensity = result.defectDensity,
+                ChangeFrequency = result.changeFrequency,
+                RegressionCost = result.regressionCost,
+                MaintenanceBurden = result.maintenanceBurden,
+                HealthScore = result.healthScore,
+                CalculatedAt = DateTime.Now,
+                CreatedAt = DateTime.Now
+            };
+
+            _context.AssetHealthMetrics.Add(snapshot);
+            _context.SaveChanges();
+
+            return JsonConvert.SerializeObject(result, Formatting.None, new JsonSerializerSettings
+            {
+                NullValueHandling = NullValueHandling.Ignore,
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"获取资产健康度失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new { error = ex.Message }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
+    public string GetAssetHealthHistory(string assetId, string daysJson)
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo($"GetAssetHealthHistory() 开始执行，AssetID: {assetId}", "WebViewBridge");
+        
+        try
+        {
+            if (_context == null)
+            {
+                return JsonConvert.SerializeObject(new List<object>(), new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var daysData = JsonConvert.DeserializeObject<dynamic>(daysJson);
+            int days = daysData?.days != null ? Convert.ToInt32(daysData.days) : 30;
+            DateTime cutoffDate = DateTime.Now.AddDays(-days);
+
+            // 确保 assetId 是明确的字符串类型，避免在 LINQ 中使用 dynamic
+            string assetIdValue = assetId ?? string.Empty;
+
+            var history = _context.AssetHealthMetrics
+                .Where(ahm => ahm.AssetId == assetIdValue && ahm.CalculatedAt >= cutoffDate)
+                .OrderByDescending(ahm => ahm.CalculatedAt)
+                .ToList();
+
+            var result = history.Select(h => new
+            {
+                id = h.Id,
+                reuseRate = h.ReuseRate,
+                defectDensity = h.DefectDensity,
+                changeFrequency = h.ChangeFrequency,
+                regressionCost = h.RegressionCost,
+                maintenanceBurden = h.MaintenanceBurden,
+                healthScore = h.HealthScore,
+                calculatedAt = h.CalculatedAt.ToString("yyyy-MM-dd HH:mm:ss")
+            }).ToList();
+
+            return JsonConvert.SerializeObject(result, Formatting.None, new JsonSerializerSettings
+            {
+                NullValueHandling = NullValueHandling.Ignore,
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"获取资产健康度历史失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new List<object>(), new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
+    public string GetAssetHealthDashboard()
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo("GetAssetHealthDashboard() 开始执行", "WebViewBridge");
+        
+        try
+        {
+            if (_context == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "数据库上下文为空" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var assets = _context.Assets
+                .Include(a => a.Versions)
+                .Include(a => a.ProjectRelations)
+                .ToList();
+
+            var totalProjects = _context.Projects.Count();
+
+            var dashboardData = new
+            {
+                totalAssets = assets.Count,
+                assetsByType = assets.GroupBy(a => a.Type).Select(g => new
+                {
+                    type = g.Key,
+                    count = g.Count()
+                }).ToList(),
+                assetsByMaturity = assets.GroupBy(a => a.Maturity).Select(g => new
+                {
+                    maturity = g.Key,
+                    count = g.Count()
+                }).ToList(),
+                topReusedAssets = assets.OrderByDescending(a => a.ReuseCount).Take(10).Select(a => new
+                {
+                    id = a.Id,
+                    name = a.Name,
+                    type = a.Type,
+                    reuseCount = a.ReuseCount
+                }).ToList(),
+                assetsHealth = assets.Select(a =>
+                {
+                    var reuseRate = totalProjects > 0 ? (double)a.ReuseCount / totalProjects : 0.0;
+                    var latestVersion = a.Versions.OrderByDescending(v => v.VersionDate).FirstOrDefault();
+                    var defectDensity = latestVersion?.DefectDensity ?? 0.0;
+                    var monthsSinceCreation = Math.Max(1, (DateTime.Now - a.CreatedAt).TotalDays / 30);
+                    var changeFrequency = a.Versions.Count / monthsSinceCreation;
+
+                    var reuseScore = Math.Min(100, reuseRate * 100 * 10);
+                    var defectScore = Math.Max(0, 100 - defectDensity * 10);
+                    var changeScore = changeFrequency > 0 && changeFrequency < 5 ? 100 : Math.Max(0, 100 - (changeFrequency - 5) * 10);
+                    var regressionScore = latestVersion?.RegressionCost != null ? Math.Max(0, 100 - latestVersion.RegressionCost.Value) : 100;
+                    var maintenanceScore = latestVersion?.MaintenanceBurden != null ? Math.Max(0, 100 - latestVersion.MaintenanceBurden.Value) : 100;
+
+                    var healthScore = reuseScore * 0.3 + defectScore * 0.25 + changeScore * 0.15 + regressionScore * 0.15 + maintenanceScore * 0.15;
+
+                    return new
+                    {
+                        id = a.Id,
+                        name = a.Name,
+                        type = a.Type,
+                        maturity = a.Maturity,
+                        healthScore = Math.Round(healthScore, 2),
+                        reuseRate = Math.Round(reuseRate, 4),
+                        defectDensity = Math.Round(defectDensity, 2),
+                        changeFrequency = Math.Round(changeFrequency, 2)
+                    };
+                }).OrderByDescending(a => a.healthScore).ToList()
+            };
+
+            return JsonConvert.SerializeObject(dashboardData, Formatting.None, new JsonSerializerSettings
+            {
+                NullValueHandling = NullValueHandling.Ignore,
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"获取健康度仪表盘失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new { error = ex.Message }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
+    // ========== 名言 API ==========
+    public string GetQuotes()
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo("GetQuotes() 开始执行", "WebViewBridge");
+        
+        try
+        {
+            if (_context == null)
+            {
+                return JsonConvert.SerializeObject(new List<object>(), new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var quotes = _context.ManagementQuotes.ToList();
+            var result = quotes.Select(q => new
+            {
+                id = q.Id,
+                quote = q.Quote,
+                category = q.Category,
+                tags = q.Tags,
+                displayCount = q.DisplayCount,
+                createdAt = q.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
+                updatedAt = q.UpdatedAt.ToString("yyyy-MM-dd HH:mm:ss")
+            }).ToList();
+
+            return JsonConvert.SerializeObject(result, Formatting.None, new JsonSerializerSettings
+            {
+                NullValueHandling = NullValueHandling.Ignore,
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"获取名言列表失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new List<object>(), new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
+    public string GetRandomQuote()
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo("GetRandomQuote() 开始执行", "WebViewBridge");
+        
+        try
+        {
+            if (_context == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "数据库上下文为空" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var quotes = _context.ManagementQuotes.ToList();
+            if (quotes.Count == 0)
+            {
+                return JsonConvert.SerializeObject(new { error = "没有可用的名言" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var random = new System.Random();
+            var quote = quotes[random.Next(quotes.Count)];
+
+            // 更新显示次数
+            quote.DisplayCount++;
+            quote.UpdatedAt = DateTime.Now;
+            _context.SaveChanges();
+
+            var result = new
+            {
+                id = quote.Id,
+                quote = quote.Quote,
+                category = quote.Category,
+                tags = quote.Tags,
+                displayCount = quote.DisplayCount
+            };
+
+            return JsonConvert.SerializeObject(result, Formatting.None, new JsonSerializerSettings
+            {
+                NullValueHandling = NullValueHandling.Ignore,
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"获取随机名言失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new { error = ex.Message }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
+    public string GetRandomQuotes(string countStr)
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo($"GetRandomQuotes() 开始执行，数量: {countStr}", "WebViewBridge");
+        
+        try
+        {
+            if (_context == null)
+            {
+                return JsonConvert.SerializeObject(new List<object>(), new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            int count = int.TryParse(countStr, out var parsedCount) ? parsedCount : 10;
+            var quotes = _context.ManagementQuotes.ToList();
+            if (quotes.Count == 0)
+            {
+                return JsonConvert.SerializeObject(new List<object>(), new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var random = new System.Random();
+            var selectedQuotes = quotes.OrderBy(x => random.Next()).Take(Math.Min(count, quotes.Count)).ToList();
+
+            // 更新显示次数
+            foreach (var quote in selectedQuotes)
+            {
+                quote.DisplayCount++;
+                quote.UpdatedAt = DateTime.Now;
+            }
+            _context.SaveChanges();
+
+            var result = selectedQuotes.Select(q => new
+            {
+                id = q.Id,
+                quote = q.Quote,
+                category = q.Category,
+                tags = q.Tags,
+                displayCount = q.DisplayCount
+            }).ToList();
+
+            return JsonConvert.SerializeObject(result, Formatting.None, new JsonSerializerSettings
+            {
+                NullValueHandling = NullValueHandling.Ignore,
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"获取随机名言失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new List<object>(), new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
+    public string CreateQuote(string quoteDataJson)
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo("CreateQuote() 开始执行", "WebViewBridge");
+        
+        try
+        {
+            if (_context == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "数据库上下文为空" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var quoteData = JsonConvert.DeserializeObject<dynamic>(quoteDataJson);
+            if (quoteData == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "名言数据为空" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var quote = new ManagementQuote
+            {
+                Id = quoteData.id?.ToString() ?? Guid.NewGuid().ToString(),
+                Quote = quoteData.quote?.ToString() ?? string.Empty,
+                Category = quoteData.category?.ToString(),
+                Tags = quoteData.tags?.ToString(),
+                DisplayCount = 0,
+                CreatedAt = DateTime.Now,
+                UpdatedAt = DateTime.Now
+            };
+
+            _context.ManagementQuotes.Add(quote);
+            _context.SaveChanges();
+
+            return JsonConvert.SerializeObject(new { id = quote.Id, message = "名言创建成功" }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"创建名言失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new { error = ex.Message }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
+    public string CreateQuotesBatch(string batchDataJson)
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo("CreateQuotesBatch() 开始执行", "WebViewBridge");
+        
+        try
+        {
+            if (_context == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "数据库上下文为空" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var batchData = JsonConvert.DeserializeObject<dynamic>(batchDataJson);
+            if (batchData == null || batchData.quotes == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "名言数据为空" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var quotesList = batchData.quotes as Newtonsoft.Json.Linq.JArray;
+            if (quotesList == null)
+            {
+                return JsonConvert.SerializeObject(new { error = "名言数据格式错误" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            var quotes = new List<ManagementQuote>();
+            foreach (var item in quotesList)
+            {
+                var quote = new ManagementQuote
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    Quote = item["quote"]?.ToString() ?? string.Empty,
+                    Category = item["category"]?.ToString(),
+                    Tags = item["tags"]?.ToString(),
+                    DisplayCount = 0,
+                    CreatedAt = DateTime.Now,
+                    UpdatedAt = DateTime.Now
+                };
+                quotes.Add(quote);
+            }
+
+            _context.ManagementQuotes.AddRange(quotes);
+            _context.SaveChanges();
+
+            return JsonConvert.SerializeObject(new { message = $"成功创建 {quotes.Count} 条名言" }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"批量创建名言失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new { error = ex.Message }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
 }

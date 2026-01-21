@@ -277,29 +277,29 @@ const HumanResources = () => {
                 <div className="flex-1 flex flex-col gap-4">
                     {/* 任务日历 - 增加高度 */}
                     <div className="glass-effect p-4 rounded-xl flex flex-col flex-1">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-xl font-bold text-white">任务日历</h3>
-                            <div className="flex space-x-2">
-                                <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-1 rounded-full hover:bg-gray-700 transition-colors">
-                                    <ChevronLeft size={16} />
-                                </button>
-                                <button onClick={() => setCurrentMonth(new Date())} className="px-3 py-1 text-sm rounded-md hover:bg-gray-700 transition-colors">今天</button>
-                                <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-1 rounded-full hover:bg-gray-700 transition-colors">
-                                    <ChevronRight size={16} />
-                                </button>
-                            </div>
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-xl font-bold text-white">任务日历</h3>
+                        <div className="flex space-x-2">
+                            <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-1 rounded-full hover:bg-gray-700 transition-colors">
+                                <ChevronLeft size={16} />
+                            </button>
+                            <button onClick={() => setCurrentMonth(new Date())} className="px-3 py-1 text-sm rounded-md hover:bg-gray-700 transition-colors">今天</button>
+                            <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-1 rounded-full hover:bg-gray-700 transition-colors">
+                                <ChevronRight size={16} />
+                            </button>
                         </div>
-                        {!selectedEngineerId && (
-                            <div className="flex-1 flex items-center justify-center text-gray-500 text-lg">
-                                请从左侧选择一位工程师查看其任务日历。
-                            </div>
-                        )}
-                        {selectedEngineerId && (
+                    </div>
+                    {!selectedEngineerId && (
+                        <div className="flex-1 flex items-center justify-center text-gray-500 text-lg">
+                            请从左侧选择一位工程师查看其任务日历。
+                        </div>
+                    )}
+                    {selectedEngineerId && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 overflow-y-auto">
-                                {renderCalendar(currentMonth)}
-                                {renderCalendar(addMonths(currentMonth, 1))}
-                            </div>
-                        )}
+                            {renderCalendar(currentMonth)}
+                            {renderCalendar(addMonths(currentMonth, 1))}
+                        </div>
+                    )}
                     </div>
 
                     {/* 工程师详细信息区域 */}

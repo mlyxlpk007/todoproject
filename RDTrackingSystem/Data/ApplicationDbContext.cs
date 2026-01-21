@@ -17,6 +17,11 @@ public class ApplicationDbContext : DbContext
     public DbSet<LessonLearned> LessonLearned { get; set; } = null!;
     public DbSet<Risk> Risks { get; set; } = null!;
     public DbSet<RiskResponse> RiskResponses { get; set; } = null!;
+    public DbSet<Asset> Assets { get; set; } = null!;
+    public DbSet<AssetVersion> AssetVersions { get; set; } = null!;
+    public DbSet<AssetProjectRelation> AssetProjectRelations { get; set; } = null!;
+    public DbSet<AssetHealthMetrics> AssetHealthMetrics { get; set; } = null!;
+    public DbSet<ManagementQuote> ManagementQuotes { get; set; } = null!;
 
     // 用于依赖注入的构造函数
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
@@ -150,6 +155,94 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Strategy).HasMaxLength(20).HasDefaultValue("mitigate");
             entity.Property(e => e.ActionPlan).HasColumnType("TEXT").IsRequired();
             entity.Property(e => e.Status).HasMaxLength(50).HasDefaultValue("planned");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("datetime('now')");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("datetime('now')");
+        });
+        
+        // ========== Asset 表配置 ==========
+        modelBuilder.Entity<Asset>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Type).HasDatabaseName("IX_Assets_Type");
+            entity.HasIndex(e => e.Maturity).HasDatabaseName("IX_Assets_Maturity");
+            entity.HasIndex(e => e.OwnerId).HasDatabaseName("IX_Assets_OwnerId");
+            entity.Property(e => e.Id).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Type).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Maturity).HasMaxLength(50).HasDefaultValue("试验");
+            entity.Property(e => e.ReuseCount).HasDefaultValue(0);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("datetime('now')");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("datetime('now')");
+        });
+        
+        // ========== AssetVersion 表配置 ==========
+        modelBuilder.Entity<AssetVersion>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(av => av.Asset)
+                  .WithMany(a => a.Versions)
+                  .HasForeignKey(av => av.AssetId)
+                  .OnDelete(DeleteBehavior.Cascade)
+                  .HasConstraintName("FK_AssetVersions_Assets");
+            entity.HasIndex(e => e.AssetId).HasDatabaseName("IX_AssetVersions_AssetId");
+            entity.HasIndex(e => e.VersionDate).HasDatabaseName("IX_AssetVersions_VersionDate");
+            entity.Property(e => e.Id).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.AssetId).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Version).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.VersionDate).HasDefaultValueSql("datetime('now')");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("datetime('now')");
+        });
+        
+        // ========== AssetProjectRelation 表配置 ==========
+        modelBuilder.Entity<AssetProjectRelation>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(apr => apr.Asset)
+                  .WithMany(a => a.ProjectRelations)
+                  .HasForeignKey(apr => apr.AssetId)
+                  .OnDelete(DeleteBehavior.Cascade)
+                  .HasConstraintName("FK_AssetProjectRelations_Assets");
+            entity.HasOne(apr => apr.Project)
+                  .WithMany()
+                  .HasForeignKey(apr => apr.ProjectId)
+                  .OnDelete(DeleteBehavior.Cascade)
+                  .HasConstraintName("FK_AssetProjectRelations_Projects");
+            entity.HasIndex(e => e.AssetId).HasDatabaseName("IX_AssetProjectRelations_AssetId");
+            entity.HasIndex(e => e.ProjectId).HasDatabaseName("IX_AssetProjectRelations_ProjectId");
+            entity.HasIndex(e => e.RelationType).HasDatabaseName("IX_AssetProjectRelations_RelationType");
+            entity.HasIndex(e => new { e.AssetId, e.ProjectId }).HasDatabaseName("IX_AssetProjectRelations_AssetId_ProjectId");
+            entity.Property(e => e.Id).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.AssetId).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.ProjectId).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.RelationType).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("datetime('now')");
+        });
+        
+        // ========== AssetHealthMetrics 表配置 ==========
+        modelBuilder.Entity<AssetHealthMetrics>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(ahm => ahm.Asset)
+                  .WithMany()
+                  .HasForeignKey(ahm => ahm.AssetId)
+                  .OnDelete(DeleteBehavior.Cascade)
+                  .HasConstraintName("FK_AssetHealthMetrics_Assets");
+            entity.HasIndex(e => e.AssetId).HasDatabaseName("IX_AssetHealthMetrics_AssetId");
+            entity.HasIndex(e => e.CalculatedAt).HasDatabaseName("IX_AssetHealthMetrics_CalculatedAt");
+            entity.Property(e => e.Id).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.AssetId).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.CalculatedAt).HasDefaultValueSql("datetime('now')");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("datetime('now')");
+        });
+        
+        // ========== ManagementQuote 表配置 ==========
+        modelBuilder.Entity<ManagementQuote>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Category).HasDatabaseName("IX_ManagementQuotes_Category");
+            entity.Property(e => e.Id).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Quote).HasColumnType("TEXT").IsRequired();
+            entity.Property(e => e.DisplayCount).HasDefaultValue(0);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("datetime('now')");
             entity.Property(e => e.UpdatedAt).HasDefaultValueSql("datetime('now')");
         });

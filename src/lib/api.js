@@ -761,3 +761,180 @@ export const backupApi = {
     });
   },
 };
+
+// 资产 API
+export const assetsApi = {
+  getAll: async () => {
+    if (useNativeBridge) {
+      const result = await nativeRequest('GetAssets');
+      return Array.isArray(result) ? result : [];
+    }
+    return httpRequest('assets');
+  },
+  
+  getById: async (id) => {
+    if (useNativeBridge) {
+      return nativeRequest('GetAsset', id);
+    }
+    return httpRequest(`assets/${id}`);
+  },
+  
+  create: async (data) => {
+    if (useNativeBridge) {
+      const result = await nativeRequest('CreateAsset', data);
+      if (result && result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    }
+    const result = await httpRequest('assets', { method: 'POST', body: data });
+    if (result && result.error) {
+      throw new Error(result.error);
+    }
+    return result;
+  },
+  
+  update: async (id, data) => {
+    if (useNativeBridge) {
+      const result = await nativeRequest('UpdateAsset', id, data);
+      if (result && result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    }
+    const result = await httpRequest(`assets/${id}`, { method: 'PUT', body: data });
+    if (result && result.error) {
+      throw new Error(result.error);
+    }
+    return result;
+  },
+  
+  delete: async (id) => {
+    if (useNativeBridge) {
+      return nativeRequest('DeleteAsset', id);
+    }
+    return httpRequest(`assets/${id}`, { method: 'DELETE' });
+  },
+  
+  createVersion: async (assetId, data) => {
+    if (useNativeBridge) {
+      const result = await nativeRequest('CreateAssetVersion', assetId, data);
+      if (result && result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    }
+    const result = await httpRequest(`assets/${assetId}/versions`, { method: 'POST', body: data });
+    if (result && result.error) {
+      throw new Error(result.error);
+    }
+    return result;
+  },
+  
+  createProjectRelation: async (data) => {
+    if (useNativeBridge) {
+      const result = await nativeRequest('CreateAssetProjectRelation', data);
+      if (result && result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    }
+    const result = await httpRequest('assets/project-relation', { method: 'POST', body: data });
+    if (result && result.error) {
+      throw new Error(result.error);
+    }
+    return result;
+  },
+  
+  getByProject: async (projectId) => {
+    if (useNativeBridge) {
+      const result = await nativeRequest('GetAssetsByProject', projectId);
+      return Array.isArray(result) ? result : [];
+    }
+    return httpRequest(`assets/project/${projectId}`);
+  },
+};
+
+// 资产健康度 API
+export const assetHealthApi = {
+  getHealth: async (assetId) => {
+    if (useNativeBridge) {
+      const result = await nativeRequest('GetAssetHealth', assetId);
+      return typeof result === 'string' ? JSON.parse(result) : result;
+    }
+    return httpRequest(`assethealth/${assetId}`);
+  },
+  
+  getHealthHistory: async (assetId, days = 30) => {
+    if (useNativeBridge) {
+      const result = await nativeRequest('GetAssetHealthHistory', assetId, JSON.stringify({ days }));
+      return typeof result === 'string' ? JSON.parse(result) : result;
+    }
+    return httpRequest(`assethealth/${assetId}/history?days=${days}`);
+  },
+  
+  getDashboard: async () => {
+    if (useNativeBridge) {
+      const result = await nativeRequest('GetAssetHealthDashboard');
+      return typeof result === 'string' ? JSON.parse(result) : result;
+    }
+    return httpRequest('assethealth/dashboard');
+  },
+};
+
+// 名言 API
+export const quotesApi = {
+  getAll: async () => {
+    if (useNativeBridge) {
+      const result = await nativeRequest('GetQuotes');
+      return Array.isArray(result) ? result : [];
+    }
+    return httpRequest('quotes');
+  },
+  
+  getRandom: async () => {
+    if (useNativeBridge) {
+      const result = await nativeRequest('GetRandomQuote');
+      return typeof result === 'string' ? JSON.parse(result) : result;
+    }
+    return httpRequest('quotes/random');
+  },
+  
+  getRandomBatch: async (count = 10) => {
+    if (useNativeBridge) {
+      const result = await nativeRequest('GetRandomQuotes', count.toString());
+      return Array.isArray(result) ? result : [];
+    }
+    return httpRequest(`quotes/random/${count}`);
+  },
+  
+  create: async (data) => {
+    if (useNativeBridge) {
+      const result = await nativeRequest('CreateQuote', data);
+      if (result && result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    }
+    const result = await httpRequest('quotes', { method: 'POST', body: data });
+    if (result && result.error) {
+      throw new Error(result.error);
+    }
+    return result;
+  },
+  
+  createBatch: async (quotes) => {
+    if (useNativeBridge) {
+      const result = await nativeRequest('CreateQuotesBatch', JSON.stringify({ quotes }));
+      if (result && result.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    }
+    const result = await httpRequest('quotes/batch', { method: 'POST', body: { quotes } });
+    if (result && result.error) {
+      throw new Error(result.error);
+    }
+    return result;
+  },
+};

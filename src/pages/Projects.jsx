@@ -181,27 +181,27 @@ const ProjectList = ({ projects, projectRiskValues, onEdit, onDelete, onRowClick
     };
 
     return (
-        <div className="glass-effect rounded-xl overflow-hidden">
-            <table className="w-full text-sm text-left">
-                <thead className="bg-white/5">
-                    <tr>
-                        <th className="px-4 py-3 font-medium">项目名称</th>
-                        <th className="px-4 py-3 font-medium">订单编号</th>
-                        <th className="px-4 py-3 font-medium">销售</th>
-                        <th className="px-4 py-3 font-medium">数量</th>
+    <div className="glass-effect rounded-xl overflow-hidden">
+        <table className="w-full text-sm text-left">
+            <thead className="bg-white/5">
+                <tr>
+                    <th className="px-4 py-3 font-medium">项目名称</th>
+                    <th className="px-4 py-3 font-medium">订单编号</th>
+                    <th className="px-4 py-3 font-medium">销售</th>
+                    <th className="px-4 py-3 font-medium">数量</th>
                         <th className="px-4 py-3 font-medium text-center">风险值</th>
-                        <th className="px-4 py-3 font-medium text-center">操作</th>
-                    </tr>
-                </thead>
-                <tbody>
+                    <th className="px-4 py-3 font-medium text-center">操作</th>
+                </tr>
+            </thead>
+            <tbody>
                     {projects.map(p => {
                         const riskValue = projectRiskValues[p.id] || 0;
                         return (
-                            <tr key={p.id} className="border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer" >
-                                <td className="px-4 py-3" onClick={() => onRowClick(p)}>{p.projectName}</td>
-                                <td className="px-4 py-3 text-gray-400" onClick={() => onRowClick(p)}>{p.orderNumber}</td>
-                                <td className="px-4 py-3 text-gray-400" onClick={() => onRowClick(p)}>{p.salesName}</td>
-                                <td className="px-4 py-3 text-gray-400" onClick={() => onRowClick(p)}>{p.deviceQuantity}</td>
+                    <tr key={p.id} className="border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer" >
+                        <td className="px-4 py-3" onClick={() => onRowClick(p)}>{p.projectName}</td>
+                        <td className="px-4 py-3 text-gray-400" onClick={() => onRowClick(p)}>{p.orderNumber}</td>
+                        <td className="px-4 py-3 text-gray-400" onClick={() => onRowClick(p)}>{p.salesName}</td>
+                        <td className="px-4 py-3 text-gray-400" onClick={() => onRowClick(p)}>{p.deviceQuantity}</td>
                                 <td className="px-4 py-3 text-center" onClick={() => onRowClick(p)}>
                                     <div className="flex items-center justify-center gap-2">
                                         <div className={`w-3 h-3 rounded-full ${getRiskColor(riskValue)}`}></div>
@@ -215,22 +215,22 @@ const ProjectList = ({ projects, projectRiskValues, onEdit, onDelete, onRowClick
                                         <span className="text-xs text-gray-500">({getRiskText(riskValue)})</span>
                                     </div>
                                 </td>
-                                <td className="px-4 py-3 text-center">
-                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); onEdit(p); }}>
-                                        <Edit className="h-4 w-4" />
-                                    </Button>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); onDelete(p.id); }}>
-                                        <Trash2 className="h-4 w-4 text-red-500/80" />
-                                    </Button>
-                                </td>
-                            </tr>
+                        <td className="px-4 py-3 text-center">
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); onEdit(p); }}>
+                                <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); onDelete(p.id); }}>
+                                <Trash2 className="h-4 w-4 text-red-500/80" />
+                            </Button>
+                        </td>
+                    </tr>
                         );
                     })}
-                </tbody>
-            </table>
-            {projects.length === 0 && <p className="text-center py-8 text-gray-500">暂无项目</p>}
-        </div>
-    );
+            </tbody>
+        </table>
+         {projects.length === 0 && <p className="text-center py-8 text-gray-500">暂无项目</p>}
+    </div>
+);
 };
 
 const ProjectModal = ({ isOpen, onClose, onSubmit, editingProject }) => {

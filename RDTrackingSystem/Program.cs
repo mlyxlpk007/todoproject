@@ -80,6 +80,10 @@ static class Program
                     // 填充初始数据
                     DatabaseSeeder.SeedIfEmpty(context);
                     logger.LogInfo("数据库种子数据填充完成", "Program");
+                    
+                    // 初始化管理名言数据
+                    QuotesSeeder.SeedQuotesIfEmpty(context);
+                    logger.LogInfo("管理名言数据初始化完成", "Program");
                 }
             }
             catch (Exception ex)

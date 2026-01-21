@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useToast } from '@/components/ui/use-toast';
-import { Package, LayoutGrid, Folder, Users as UsersIcon, User, Settings, BarChart2, Bell, Database, ListChecks, BookOpen } from 'lucide-react';
+import { Package, LayoutGrid, Folder, Users as UsersIcon, User, Settings, BarChart2, Bell, Database, ListChecks, BookOpen, Archive, Sparkles } from 'lucide-react';
 import NotificationCenter from './NotificationCenter';
 
 const Sidebar = () => {
@@ -68,6 +68,8 @@ const Sidebar = () => {
     { icon: UsersIcon, label: '人力', path: '/human-resources' },
     { icon: User, label: '用户', path: '/users' },
     { icon: BookOpen, label: '经验教训库', path: '/lesson-learned' },
+    { icon: Archive, label: '资产管理', path: '/assets' },
+    { icon: Sparkles, label: '管理泡泡', path: '/quotes' },
     { icon: Database, label: '数据管理', path: '/data-management' },
     { icon: Settings, label: '数据测试', path: '/test-data' },
   ];

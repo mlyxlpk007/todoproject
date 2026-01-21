@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/components/ui/use-toast';
-import { Plus, Bell, Edit, Check, ChevronsUpDown, X, Eye, AlertCircle, User, Calendar, FileText, CheckCircle2, Tag } from 'lucide-react';
+import { Plus, Bell, Edit, Check, ChevronsUpDown, X, Eye, AlertCircle, User, Calendar, FileText, CheckCircle2, Tag, Archive, Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-import { tasksApi, projectsApi, usersApi } from '@/lib/api';
+import { tasksApi, projectsApi, usersApi, assetsApi } from '@/lib/api';
 import { format } from 'date-fns';
 import CompleteTaskModal from '@/components/CompleteTaskModal';
 import TagModal from '@/components/TagModal';
+import AssetRelationModal from '@/components/AssetRelationModal';
 
 const Tasks = () => {
     const { toast } = useToast();
@@ -20,9 +21,11 @@ const Tasks = () => {
     const [isTaskDetailOpen, setTaskDetailOpen] = useState(false);
     const [isCompleteModalOpen, setCompleteModalOpen] = useState(false);
     const [isTagModalOpen, setIsTagModalOpen] = useState(false);
+    const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
     const [editingTask, setEditingTask] = useState(null);
     const [viewingTask, setViewingTask] = useState(null);
     const [completingTask, setCompletingTask] = useState(null);
+    const [taskAssets, setTaskAssets] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -194,6 +197,38 @@ const Tasks = () => {
         }
     };
     
+    const handleTagSubmit = async (tagType, lessonId) => {
+        if (!viewingTask || !viewingTask.id) {
+            toast({ title: "错误", description: "任务信息不完整", variant: "destructive" });
+            return;
+        }
+
+        try {
+            await tasksApi.update(viewingTask.id, {
+                ...viewingTask,
+                tagType: tagType || null,
+                lessonLearnedId: lessonId || null
+            });
+            toast({ title: "标签保存成功" });
+            setIsTagModalOpen(false);
+            // 重新加载数据以更新任务列表
+            await loadData();
+            // 更新当前查看的任务
+            const updatedTasks = await tasksApi.getAll();
+            const updatedTask = updatedTasks.find(t => t.id === viewingTask.id);
+            if (updatedTask) {
+                setViewingTask(updatedTask);
+            }
+        } catch (error) {
+            console.error('保存标签失败:', error);
+            toast({ 
+                title: "保存标签失败", 
+                description: error.message || "请检查控制台获取详细信息",
+                variant: "destructive" 
+            });
+        }
+    };
+    
     const showToast = () => {
         toast({
           title: '🚧 功能尚未实现',
@@ -299,10 +334,12 @@ const Tasks = () => {
                     onClose={() => {
                         setTaskDetailOpen(false);
                         setViewingTask(null);
+                        setTaskAssets([]);
                     }} 
                     task={viewingTask} 
                     projects={projects} 
                     users={users} 
+                    taskAssets={taskAssets}
                     onEdit={() => { 
                         setTaskDetailOpen(false);
                         setViewingTask(null);
@@ -314,9 +351,12 @@ const Tasks = () => {
                         setViewingTask(null);
                         setCompletingTask(viewingTask); 
                         setCompleteModalOpen(true); 
-                    }}
+                    }} 
                     onTag={() => {
                         setIsTagModalOpen(true);
+                    }}
+                    onAsset={() => {
+                        setIsAssetModalOpen(true);
                     }}
                 />
             )}
@@ -347,7 +387,62 @@ const Tasks = () => {
                     currentLessonId={viewingTask.lessonLearnedId}
                 />
             )}
+            {isAssetModalOpen && viewingTask && viewingTask.projectId && (
+                <AssetRelationModal
+                    isOpen={isAssetModalOpen}
+                    onClose={() => setIsAssetModalOpen(false)}
+                    projectId={viewingTask.projectId}
+                    defaultRelationType="used"
+                    onSuccess={() => {
+                        // 重新加载任务资产（通过项目）
+                        if (viewingTask?.projectId) {
+                            loadTaskAssets(viewingTask.projectId);
+                        }
+                    }}
+                />
+            )}
         </div>
+    );
+};
+
+    const loadTaskAssets = async (projectId) => {
+        try {
+            const assets = await assetsApi.getByProject(projectId);
+            setTaskAssets(assets);
+        } catch (error) {
+            console.error('加载任务资产失败:', error);
+        }
+    };
+
+// 带资产加载的 TaskDetailModal 包装组件
+const TaskDetailModalWithAssets = ({ isOpen, task, onLoadAssets, ...props }) => {
+    const [taskAssets, setTaskAssets] = useState([]);
+
+    useEffect(() => {
+        if (isOpen && task?.projectId) {
+            loadAssets();
+        }
+    }, [isOpen, task?.projectId]);
+
+    const loadAssets = async () => {
+        if (task?.projectId) {
+            try {
+                const assets = await assetsApi.getByProject(task.projectId);
+                setTaskAssets(assets);
+            } catch (error) {
+                console.error('加载任务资产失败:', error);
+            }
+        }
+    };
+
+    return (
+        <TaskDetailModal
+            {...props}
+            isOpen={isOpen}
+            task={task}
+            taskAssets={taskAssets}
+            onAsset={props.onAsset}
+        />
     );
 };
 
@@ -620,7 +715,7 @@ const TaskModal = ({ isOpen, onClose, onSubmit, editingTask, projects, users }) 
     );
 };
 
-const TaskDetailModal = ({ isOpen, onClose, task, projects, users, onEdit, onComplete, onTag }) => {
+const TaskDetailModal = ({ isOpen, onClose, task, projects, users, onEdit, onComplete, onTag, onAsset, taskAssets = [] }) => {
     if (!isOpen || !task) return null;
 
     const project = projects.find(p => p.id === task.projectId);
@@ -761,6 +856,48 @@ const TaskDetailModal = ({ isOpen, onClose, task, projects, users, onEdit, onCom
                         )}
                     </div>
                 </div>
+
+                {/* 关联资产区域 */}
+                {task.projectId && (
+                    <div className="space-y-1">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2 text-sm text-gray-400">
+                                <Archive className="h-4 w-4" />
+                                <span>关联资产</span>
+                            </div>
+                            {onAsset && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={onAsset}
+                                >
+                                    <Link2 className="h-4 w-4 mr-1" />
+                                    关联资产
+                                </Button>
+                            )}
+                        </div>
+                        {taskAssets.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                                {taskAssets.map(asset => (
+                                    <span
+                                        key={asset.id}
+                                        className={`px-3 py-1 rounded-full text-sm border ${
+                                            asset.relationType === 'used' ? 'bg-blue-500/20 text-blue-300 border-blue-500/50' :
+                                            asset.relationType === 'modified' ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/50' :
+                                            'bg-green-500/20 text-green-300 border-green-500/50'
+                                        }`}
+                                    >
+                                        {asset.assetName}
+                                        {asset.relationType === 'used' ? ' (使用)' :
+                                         asset.relationType === 'modified' ? ' (修改)' : ' (新增)'}
+                                    </span>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-gray-500 text-sm">暂无关联资产</p>
+                        )}
+                    </div>
+                )}
 
                 {isCompleted && (
                     <div className="space-y-1 p-4 bg-green-500/10 rounded-lg border border-green-500/30">

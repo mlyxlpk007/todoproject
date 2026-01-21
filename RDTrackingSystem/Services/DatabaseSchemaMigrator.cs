@@ -52,6 +52,15 @@ public static class DatabaseSchemaMigrator
                 CreateRisksTableIfNotExists(connection, logger);
                 CreateRiskResponsesTableIfNotExists(connection, logger);
                 
+                // 创建资产相关表（如果不存在）
+                CreateAssetsTableIfNotExists(connection, logger);
+                CreateAssetVersionsTableIfNotExists(connection, logger);
+                CreateAssetProjectRelationsTableIfNotExists(connection, logger);
+                CreateAssetHealthMetricsTableIfNotExists(connection, logger);
+                
+                // 创建名言表（如果不存在）
+                CreateManagementQuotesTableIfNotExists(connection, logger);
+                
                 logger.LogInfo("数据库架构迁移完成", "DatabaseSchemaMigrator");
             }
         }
@@ -383,6 +392,217 @@ public static class DatabaseSchemaMigrator
         catch (Exception ex)
         {
             logger.LogError($"创建 RiskResponses 表失败: {ex.Message}", ex, "DatabaseSchemaMigrator");
+        }
+    }
+    
+    /// <summary>
+    /// 创建 Assets 表（如果不存在）
+    /// </summary>
+    private static void CreateAssetsTableIfNotExists(SqliteConnection connection, FileLogger logger)
+    {
+        try
+        {
+            if (TableExists(connection, "Assets"))
+            {
+                logger.LogInfo("Assets 表已存在，跳过创建", "DatabaseSchemaMigrator");
+                return;
+            }
+            
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                CREATE TABLE IF NOT EXISTS [Assets] (
+                    [Id] TEXT NOT NULL PRIMARY KEY,
+                    [Name] TEXT NOT NULL,
+                    [Type] TEXT NOT NULL,
+                    [Maturity] TEXT NOT NULL DEFAULT '试验',
+                    [OwnerId] TEXT,
+                    [OwnerName] TEXT,
+                    [Description] TEXT,
+                    [Tags] TEXT,
+                    [ReuseCount] INTEGER NOT NULL DEFAULT 0,
+                    [RelatedProjectIds] TEXT,
+                    [CreatedAt] TEXT NOT NULL DEFAULT (datetime('now')),
+                    [UpdatedAt] TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+                
+                CREATE INDEX IF NOT EXISTS [IX_Assets_Type] ON [Assets]([Type]);
+                CREATE INDEX IF NOT EXISTS [IX_Assets_Maturity] ON [Assets]([Maturity]);
+                CREATE INDEX IF NOT EXISTS [IX_Assets_OwnerId] ON [Assets]([OwnerId]);
+            ";
+            
+            command.ExecuteNonQuery();
+            logger.LogInfo("Assets 表创建成功", "DatabaseSchemaMigrator");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"创建 Assets 表失败: {ex.Message}", ex, "DatabaseSchemaMigrator");
+        }
+    }
+    
+    /// <summary>
+    /// 创建 AssetVersions 表（如果不存在）
+    /// </summary>
+    private static void CreateAssetVersionsTableIfNotExists(SqliteConnection connection, FileLogger logger)
+    {
+        try
+        {
+            if (TableExists(connection, "AssetVersions"))
+            {
+                logger.LogInfo("AssetVersions 表已存在，跳过创建", "DatabaseSchemaMigrator");
+                return;
+            }
+            
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                CREATE TABLE IF NOT EXISTS [AssetVersions] (
+                    [Id] TEXT NOT NULL PRIMARY KEY,
+                    [AssetId] TEXT NOT NULL,
+                    [Version] TEXT NOT NULL,
+                    [ChangeReason] TEXT,
+                    [QualityChanges] TEXT,
+                    [TechnicalDebt] TEXT,
+                    [ChangedBy] TEXT,
+                    [QualityScore] REAL,
+                    [DefectDensity] REAL,
+                    [ChangeFrequency] REAL,
+                    [RegressionCost] REAL,
+                    [MaintenanceBurden] REAL,
+                    [VersionDate] TEXT NOT NULL DEFAULT (datetime('now')),
+                    [CreatedAt] TEXT NOT NULL DEFAULT (datetime('now')),
+                    FOREIGN KEY([AssetId]) REFERENCES [Assets]([Id]) ON DELETE CASCADE
+                );
+                
+                CREATE INDEX IF NOT EXISTS [IX_AssetVersions_AssetId] ON [AssetVersions]([AssetId]);
+                CREATE INDEX IF NOT EXISTS [IX_AssetVersions_VersionDate] ON [AssetVersions]([VersionDate]);
+            ";
+            
+            command.ExecuteNonQuery();
+            logger.LogInfo("AssetVersions 表创建成功", "DatabaseSchemaMigrator");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"创建 AssetVersions 表失败: {ex.Message}", ex, "DatabaseSchemaMigrator");
+        }
+    }
+    
+    /// <summary>
+    /// 创建 AssetProjectRelations 表（如果不存在）
+    /// </summary>
+    private static void CreateAssetProjectRelationsTableIfNotExists(SqliteConnection connection, FileLogger logger)
+    {
+        try
+        {
+            if (TableExists(connection, "AssetProjectRelations"))
+            {
+                logger.LogInfo("AssetProjectRelations 表已存在，跳过创建", "DatabaseSchemaMigrator");
+                return;
+            }
+            
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                CREATE TABLE IF NOT EXISTS [AssetProjectRelations] (
+                    [Id] TEXT NOT NULL PRIMARY KEY,
+                    [AssetId] TEXT NOT NULL,
+                    [ProjectId] TEXT NOT NULL,
+                    [RelationType] TEXT NOT NULL,
+                    [Version] TEXT,
+                    [Notes] TEXT,
+                    [CreatedAt] TEXT NOT NULL DEFAULT (datetime('now')),
+                    FOREIGN KEY([AssetId]) REFERENCES [Assets]([Id]) ON DELETE CASCADE,
+                    FOREIGN KEY([ProjectId]) REFERENCES [Projects]([Id]) ON DELETE CASCADE
+                );
+                
+                CREATE INDEX IF NOT EXISTS [IX_AssetProjectRelations_AssetId] ON [AssetProjectRelations]([AssetId]);
+                CREATE INDEX IF NOT EXISTS [IX_AssetProjectRelations_ProjectId] ON [AssetProjectRelations]([ProjectId]);
+                CREATE INDEX IF NOT EXISTS [IX_AssetProjectRelations_RelationType] ON [AssetProjectRelations]([RelationType]);
+                CREATE INDEX IF NOT EXISTS [IX_AssetProjectRelations_AssetId_ProjectId] ON [AssetProjectRelations]([AssetId], [ProjectId]);
+            ";
+            
+            command.ExecuteNonQuery();
+            logger.LogInfo("AssetProjectRelations 表创建成功", "DatabaseSchemaMigrator");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"创建 AssetProjectRelations 表失败: {ex.Message}", ex, "DatabaseSchemaMigrator");
+        }
+    }
+    
+    /// <summary>
+    /// 创建 AssetHealthMetrics 表（如果不存在）
+    /// </summary>
+    private static void CreateAssetHealthMetricsTableIfNotExists(SqliteConnection connection, FileLogger logger)
+    {
+        try
+        {
+            if (TableExists(connection, "AssetHealthMetrics"))
+            {
+                logger.LogInfo("AssetHealthMetrics 表已存在，跳过创建", "DatabaseSchemaMigrator");
+                return;
+            }
+            
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                CREATE TABLE IF NOT EXISTS [AssetHealthMetrics] (
+                    [Id] TEXT NOT NULL PRIMARY KEY,
+                    [AssetId] TEXT NOT NULL,
+                    [ReuseRate] REAL NOT NULL DEFAULT 0.0,
+                    [DefectDensity] REAL NOT NULL DEFAULT 0.0,
+                    [ChangeFrequency] REAL NOT NULL DEFAULT 0.0,
+                    [RegressionCost] REAL NOT NULL DEFAULT 0.0,
+                    [MaintenanceBurden] REAL NOT NULL DEFAULT 0.0,
+                    [HealthScore] REAL NOT NULL DEFAULT 0.0,
+                    [CalculatedAt] TEXT NOT NULL DEFAULT (datetime('now')),
+                    [CreatedAt] TEXT NOT NULL DEFAULT (datetime('now')),
+                    FOREIGN KEY([AssetId]) REFERENCES [Assets]([Id]) ON DELETE CASCADE
+                );
+                
+                CREATE INDEX IF NOT EXISTS [IX_AssetHealthMetrics_AssetId] ON [AssetHealthMetrics]([AssetId]);
+                CREATE INDEX IF NOT EXISTS [IX_AssetHealthMetrics_CalculatedAt] ON [AssetHealthMetrics]([CalculatedAt]);
+            ";
+            
+            command.ExecuteNonQuery();
+            logger.LogInfo("AssetHealthMetrics 表创建成功", "DatabaseSchemaMigrator");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"创建 AssetHealthMetrics 表失败: {ex.Message}", ex, "DatabaseSchemaMigrator");
+        }
+    }
+    
+    /// <summary>
+    /// 创建 ManagementQuotes 表（如果不存在）
+    /// </summary>
+    private static void CreateManagementQuotesTableIfNotExists(SqliteConnection connection, FileLogger logger)
+    {
+        try
+        {
+            if (TableExists(connection, "ManagementQuotes"))
+            {
+                logger.LogInfo("ManagementQuotes 表已存在，跳过创建", "DatabaseSchemaMigrator");
+                return;
+            }
+            
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                CREATE TABLE IF NOT EXISTS [ManagementQuotes] (
+                    [Id] TEXT NOT NULL PRIMARY KEY,
+                    [Quote] TEXT NOT NULL,
+                    [Category] TEXT,
+                    [Tags] TEXT,
+                    [DisplayCount] INTEGER NOT NULL DEFAULT 0,
+                    [CreatedAt] TEXT NOT NULL DEFAULT (datetime('now')),
+                    [UpdatedAt] TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+                
+                CREATE INDEX IF NOT EXISTS [IX_ManagementQuotes_Category] ON [ManagementQuotes]([Category]);
+            ";
+            
+            command.ExecuteNonQuery();
+            logger.LogInfo("ManagementQuotes 表创建成功", "DatabaseSchemaMigrator");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"创建 ManagementQuotes 表失败: {ex.Message}", ex, "DatabaseSchemaMigrator");
         }
     }
 }

@@ -17,7 +17,7 @@ const UsersPage = () => {
     useEffect(() => {
         // 延迟加载，确保桥接对象已注入
         const timer = setTimeout(() => {
-            loadUsers();
+        loadUsers();
         }, 500);
         return () => clearTimeout(timer);
     }, []);
@@ -508,7 +508,7 @@ const UserModal = ({ isOpen, onClose, onSubmit, editingUser }) => {
                                 );
                             })()}
                         </div>
-                        <div className="form-group">
+                         <div className="form-group">
                             <label>密码</label>
                             <input type="password" name="password" placeholder={editingUser ? "留空以保持不变" : "设置初始密码"} className="form-input" />
                         </div>

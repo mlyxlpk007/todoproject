@@ -205,10 +205,10 @@ const Dashboard = () => {
     const atRisk = projects.filter(p => {
       if (!p || !p.estimatedCompletion) return false;
       try {
-        const completionDate = new Date(p.estimatedCompletion);
-        const daysUntilCompletion = Math.floor((completionDate - today) / (1000 * 60 * 60 * 24));
-        const progress = getProgress(p);
-        return (daysUntilCompletion <= 7 && progress < 80) || (isOverdue(p.estimatedCompletion) && progress < 100);
+      const completionDate = new Date(p.estimatedCompletion);
+      const daysUntilCompletion = Math.floor((completionDate - today) / (1000 * 60 * 60 * 24));
+      const progress = getProgress(p);
+      return (daysUntilCompletion <= 7 && progress < 80) || (isOverdue(p.estimatedCompletion) && progress < 100);
       } catch (e) {
         return false;
       }
