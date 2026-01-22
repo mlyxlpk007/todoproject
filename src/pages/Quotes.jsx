@@ -32,7 +32,7 @@ const Quotes = () => {
   const [viewMode, setViewMode] = useState('bubble'); // bubble 或 list
   const [loading, setLoading] = useState(true);
   const containerRef = useRef(null);
-  const bubbleCount = 15; // 同时显示的气泡数量
+  const bubbleCount = 15; // 同时显示的气泡数量（增加以铺满区域）
 
   useEffect(() => {
     loadQuotes();
@@ -60,51 +60,144 @@ const Quotes = () => {
     }
   };
 
-  // 计算气泡的安全边界（虚拟空气墙）
-  const getBubbleBounds = (bubbleSize) => {
-    if (!containerRef.current) {
-      return { minX: 10, maxX: 90, minY: 10, maxY: 90 };
-    }
+  // 计算气泡的实际渲染尺寸（包括padding、border等）
+  const getBubbleActualSize = (bubbleSize, quoteText = '', categoryText = '') => {
+    // 基础尺寸
+    const baseWidth = 200;
+    const baseHeight = 100;
+    const sizeMultiplier = bubbleSize;
     
-    const containerWidth = containerRef.current.clientWidth;
-    const containerHeight = containerRef.current.clientHeight;
+    // 估算文本宽度（中文字符约等于字体大小的1倍，英文约0.6倍）
+    const fontSize = 0.9 + bubbleSize * 0.1; // rem
+    const fontSizePx = fontSize * 16; // 转换为px
+    const charWidth = fontSizePx; // 中文字符宽度
+    const maxTextWidth = Math.max(180, 250 + bubbleSize * 50); // 最大宽度限制
+    const minTextWidth = 180; // 最小宽度
     
-    // 计算气泡实际大小（像素）
-    const bubbleWidth = 200 + bubbleSize * 100;
-    const bubbleHeight = bubbleWidth;
-    const bubbleRadius = Math.max(bubbleWidth, bubbleHeight) / 2;
+    // 估算文本行数（考虑换行）
+    const textLength = quoteText.length || 20; // 默认20个字符
+    const charsPerLine = Math.floor(maxTextWidth / charWidth);
+    const textLines = Math.max(1, Math.ceil(textLength / charsPerLine));
     
-    // 虚拟空气墙：确保气泡边缘距离容器边缘至少20px
-    const wallPadding = 20;
-    const safeRadius = bubbleRadius + wallPadding;
+    // 计算实际宽度（文本宽度 + padding）
+    const paddingX = 16 * 2; // 左右padding各16px
+    const borderWidth = 2; // border宽度
+    const actualWidth = Math.min(maxTextWidth, Math.max(minTextWidth, textLength * charWidth / charsPerLine)) + paddingX + borderWidth;
     
-    // 转换为百分比
-    const minXPercent = (safeRadius / containerWidth) * 100;
-    const maxXPercent = 100 - (safeRadius / containerWidth) * 100;
-    const minYPercent = (safeRadius / containerHeight) * 100;
-    const maxYPercent = 100 - (safeRadius / containerHeight) * 100;
+    // 计算实际高度（行数 * 行高 + padding + category高度）
+    const lineHeight = fontSizePx * 1.6; // 行高
+    const paddingY = 16 * 2; // 上下padding各16px
+    const categoryHeight = categoryText ? fontSizePx * 0.75 + 8 : 0; // category高度
+    const actualHeight = textLines * lineHeight + paddingY + categoryHeight + borderWidth;
     
     return {
-      minX: Math.max(0, minXPercent),
-      maxX: Math.min(100, maxXPercent),
-      minY: Math.max(0, minYPercent),
-      maxY: Math.min(100, maxYPercent),
-      radius: bubbleRadius
+      width: actualWidth,
+      height: actualHeight,
+      halfWidth: actualWidth / 2,
+      halfHeight: actualHeight / 2
     };
+  };
+
+  // 计算气泡的安全边界（虚拟空气墙）
+  // 基于中心点 + 半尺寸的边界计算
+  const getBubbleBounds = (bubbleSize, containerWidth, containerHeight, quoteText = '', categoryText = '') => {
+    if (!containerWidth || !containerHeight) {
+      return { minX: 5, maxX: 95, minY: 5, maxY: 95 };
+    }
+    
+    // 获取气泡实际渲染尺寸
+    const bubbleSizeInfo = getBubbleActualSize(bubbleSize, quoteText, categoryText);
+    const halfWidth = bubbleSizeInfo.halfWidth;
+    const halfHeight = bubbleSizeInfo.halfHeight;
+    
+    // 虚拟空气墙：确保气泡边缘距离容器边缘至少30px
+    const wallPadding = 10;
+    
+    // 转换为百分比，基于中心点 + 半尺寸
+    const halfWidthPercentX = (halfWidth / containerWidth) * 100;
+    const halfHeightPercentY = (halfHeight / containerHeight) * 100;
+    const paddingPercentX = (220 / containerWidth) * 100;
+    const paddingPercentY = (80 / containerHeight) * 100;
+    
+    // 中心点的安全范围 = 半尺寸 + 边距
+    const minX = halfWidthPercentX + paddingPercentX;
+    const maxX = 100 - (halfWidthPercentX + paddingPercentX);
+    const minY = halfHeightPercentY + paddingPercentY;
+    const maxY = 100 - (halfHeightPercentY + paddingPercentY);
+    
+    return {
+      minX: Math.max(0, minX),
+      maxX: Math.min(100, maxX),
+      minY: Math.max(0, minY),
+      maxY: Math.min(100, maxY),
+      halfWidth: halfWidthPercentX,
+      halfHeight: halfHeightPercentY,
+      actualWidth: bubbleSizeInfo.width,
+      actualHeight: bubbleSizeInfo.height
+    };
+  };
+
+  // 检查位置是否与现有气泡重叠
+  const isPositionOverlapping = (x, y, size, existingBubbles, containerWidth, containerHeight, quoteText = '', categoryText = '', strict = true) => {
+    if (existingBubbles.length === 0) return false;
+    
+    // 获取气泡实际尺寸
+    const bubbleSizeInfo = getBubbleActualSize(size, quoteText, categoryText);
+    const halfWidth = bubbleSizeInfo.halfWidth;
+    const halfHeight = bubbleSizeInfo.halfHeight;
+    const bubbleRadius = Math.max(halfWidth, halfHeight);
+    
+    // 根据严格程度调整最小间距
+    const minDistance = strict ? bubbleRadius * 1.4 : bubbleRadius * 1.2;
+    
+    for (const bubble of existingBubbles) {
+      // 获取现有气泡的实际尺寸
+      const existingSizeInfo = getBubbleActualSize(bubble.size, bubble.quote || '', bubble.category || '');
+      const existingRadius = Math.max(existingSizeInfo.halfWidth, existingSizeInfo.halfHeight);
+      
+      const existingX = (bubble.x / 100) * containerWidth;
+      const existingY = (bubble.y / 100) * containerHeight;
+      const newX = (x / 100) * containerWidth;
+      const newY = (y / 100) * containerHeight;
+      
+      const distance = Math.sqrt(
+        Math.pow(newX - existingX, 2) + Math.pow(newY - existingY, 2)
+      );
+      
+      if (distance < minDistance + existingRadius) {
+        return true;
+      }
+    }
+    return false;
   };
 
   const initializeBubbles = () => {
     if (quotes.length === 0) return;
     
     // 等待容器渲染完成
-    setTimeout(() => {
-      if (!containerRef.current) return;
+    const tryInitialize = () => {
+      if (!containerRef.current) {
+        setTimeout(tryInitialize, 50);
+        return;
+      }
+      
+      const containerWidth = containerRef.current.clientWidth;
+      const containerHeight = containerRef.current.clientHeight;
+      
+      if (containerWidth === 0 || containerHeight === 0) {
+        setTimeout(tryInitialize, 50);
+        return;
+      }
       
       const random = new Random();
       const initialQuotes = [];
       const usedIndices = new Set();
+      const targetCount = Math.min(bubbleCount, quotes.length);
       
-      for (let i = 0; i < Math.min(bubbleCount, quotes.length); i++) {
+      console.log(`[Quotes] 初始化气泡，目标数量: ${targetCount}, 可用名言: ${quotes.length}`);
+      
+      // 使用完全随机分布，避免网格布局的规律性
+      for (let i = 0; i < targetCount; i++) {
         let index;
         do {
           index = random.nextInt(quotes.length);
@@ -113,15 +206,37 @@ const Quotes = () => {
         usedIndices.add(index);
         const quote = quotes[index];
         
-        // 计算气泡大小（像素）
+        // 计算气泡大小（像素），使用更大的变化范围
         const bubbleSize = random.nextFloat() * 0.5 + 0.7; // 0.7-1.2倍
         
-        // 获取该气泡的安全边界（虚拟空气墙）
-        const bounds = getBubbleBounds(bubbleSize);
+        // 获取该气泡的安全边界（虚拟空气墙）- 传入实际文本内容
+        const bounds = getBubbleBounds(bubbleSize, containerWidth, containerHeight, quote.quote, quote.category);
         
-        // 确保气泡中心在安全区域内
-        const x = random.nextFloat() * (bounds.maxX - bounds.minX) + bounds.minX;
-        const y = random.nextFloat() * (bounds.maxY - bounds.minY) + bounds.minY;
+        // 完全随机分布，避免规律性
+        let x, y;
+        let attempts = 0;
+        const maxAttempts = 100; // 增加尝试次数
+        
+        do {
+          // 完全随机位置，不使用网格
+          x = random.nextFloat() * (bounds.maxX - bounds.minX) + bounds.minX;
+          y = random.nextFloat() * (bounds.maxY - bounds.minY) + bounds.minY;
+          
+          // 确保在边界内
+          x = Math.max(bounds.minX, Math.min(bounds.maxX, x));
+          y = Math.max(bounds.minY, Math.min(bounds.maxY, y));
+          
+          attempts++;
+          
+          // 根据尝试次数调整重叠检测的严格程度
+          const isStrict = attempts < maxAttempts * 0.7; // 前70%的尝试使用严格检测
+          const isOverlapping = isPositionOverlapping(x, y, bubbleSize, initialQuotes, containerWidth, containerHeight, quote.quote, quote.category, isStrict);
+          
+          if (!isOverlapping || attempts >= maxAttempts) {
+            // 没有重叠或达到最大尝试次数，使用当前位置
+            break;
+          }
+        } while (attempts < maxAttempts);
         
         initialQuotes.push({
           ...quote,
@@ -130,14 +245,19 @@ const Quotes = () => {
           size: bubbleSize,
           rotation: random.nextFloat() * 10 - 5, // -5到5度
           id: `bubble-${i}-${Date.now()}`,
-          vx: (random.nextFloat() - 0.5) * 0.2, // 初始速度 x（减小速度）
-          vy: (random.nextFloat() - 0.5) * 0.2, // 初始速度 y
-          bounds: bounds // 保存边界信息
+          vx: (random.nextFloat() - 0.5) * 0.12, // 初始速度 x（减小速度，避免碰撞）
+          vy: (random.nextFloat() - 0.5) * 0.12, // 初始速度 y
+          bounds: bounds, // 保存边界信息
+          containerWidth: containerWidth,
+          containerHeight: containerHeight
         });
       }
       
+      console.log(`[Quotes] 成功初始化 ${initialQuotes.length} 个气泡`);
       setDisplayedQuotes(initialQuotes);
-    }, 100);
+    };
+    
+    tryInitialize();
   };
 
   const handleBubbleClick = async (bubbleId) => {
@@ -151,12 +271,14 @@ const Quotes = () => {
       const newQuote = await quotesApi.getRandom();
       if (newQuote && containerRef.current) {
         const random = new Random();
+        const containerWidth = containerRef.current.clientWidth;
+        const containerHeight = containerRef.current.clientHeight;
         
         // 计算气泡大小
         const bubbleSize = random.nextFloat() * 0.5 + 0.7;
         
-        // 获取该气泡的安全边界（虚拟空气墙）
-        const bounds = getBubbleBounds(bubbleSize);
+        // 获取该气泡的安全边界（虚拟空气墙）- 传入实际文本内容
+        const bounds = getBubbleBounds(bubbleSize, containerWidth, containerHeight, newQuote.quote, newQuote.category);
         
         // 确保新气泡不会与现有气泡重叠太多
         let attempts = 0;
@@ -175,9 +297,11 @@ const Quotes = () => {
           size: bubbleSize,
           rotation: random.nextFloat() * 10 - 5,
           id: `bubble-${Date.now()}-${Math.random()}`,
-          vx: (random.nextFloat() - 0.5) * 0.2,
-          vy: (random.nextFloat() - 0.5) * 0.2,
-          bounds: bounds
+          vx: (random.nextFloat() - 0.5) * 0.15,
+          vy: (random.nextFloat() - 0.5) * 0.15,
+          bounds: bounds,
+          containerWidth: containerWidth,
+          containerHeight: containerHeight
         };
         
         // 延迟添加新气泡，让旧气泡先消失
@@ -214,12 +338,12 @@ const Quotes = () => {
 
   const getBubbleGradientColor = (index) => {
     const gradients = [
-      'rgba(59, 130, 246, 0.15)', // blue
-      'rgba(168, 85, 247, 0.15)', // purple
-      'rgba(236, 72, 153, 0.15)', // pink
-      'rgba(99, 102, 241, 0.15)', // indigo
-      'rgba(6, 182, 212, 0.15)', // cyan
-      'rgba(20, 184, 166, 0.15)', // teal
+      'rgba(59, 130, 246, 0.3)', // blue - 增加不透明度
+      'rgba(168, 85, 247, 0.3)', // purple
+      'rgba(236, 72, 153, 0.3)', // pink
+      'rgba(99, 102, 241, 0.3)', // indigo
+      'rgba(6, 182, 212, 0.3)', // cyan
+      'rgba(20, 184, 166, 0.3)', // teal
     ];
     return gradients[index % gradients.length];
   };
@@ -281,43 +405,68 @@ const Quotes = () => {
         {viewMode === 'bubble' ? (
           <div
             ref={containerRef}
-            className="relative w-full h-[calc(100vh-200px)] min-h-[600px] bg-gradient-to-br from-blue-900/30 via-cyan-900/20 to-purple-900/30 rounded-xl overflow-hidden"
+            className="relative w-full h-[calc(100vh-200px)] min-h-[600px] bg-gradient-to-br from-blue-900/40 via-cyan-900/30 to-purple-900/40 rounded-xl overflow-hidden"
             style={{
-              background: 'linear-gradient(135deg, rgba(30, 58, 138, 0.3) 0%, rgba(14, 116, 144, 0.2) 50%, rgba(88, 28, 135, 0.3) 100%)',
+              background: 'linear-gradient(135deg, rgba(30, 58, 138, 0.4) 0%, rgba(14, 116, 144, 0.3) 50%, rgba(88, 28, 135, 0.4) 100%)',
               width: '100%',
-              maxWidth: '100%'
+              maxWidth: '100%',
+              backdropFilter: 'blur(1px)',
+              WebkitBackdropFilter: 'blur(1px)'
             }}
           >
-            <AnimatePresence mode="popLayout">
+            {/* 透明容器层 - 限制气泡绘制区域 */}
+            <div
+              className="absolute inset-0 overflow-hidden"
+              style={{
+                left: '0',
+                top: '0',
+                right: '0',
+                bottom: '0',
+                pointerEvents: 'none' // 允许点击穿透到气泡
+              }}
+            >
+              <AnimatePresence mode="popLayout">
               {displayedQuotes.map((bubble, index) => {
-                // 获取或计算气泡的安全边界（虚拟空气墙）
-                const bounds = bubble.bounds || getBubbleBounds(bubble.size);
+                // 获取容器尺寸
+                const containerWidth = containerRef.current?.clientWidth || bubble.containerWidth || 1000;
+                const containerHeight = containerRef.current?.clientHeight || bubble.containerHeight || 600;
                 
-                // 确保当前位置在安全边界内（空气墙内）
-                const clampedX = Math.max(bounds.minX, Math.min(bounds.maxX, bubble.x));
-                const clampedY = Math.max(bounds.minY, Math.min(bounds.maxY, bubble.y));
+                // 重新计算边界（确保使用最新的容器尺寸和实际文本内容）
+                const bounds = getBubbleBounds(bubble.size, containerWidth, containerHeight, bubble.quote, bubble.category);
+                
+                // 确保当前位置在安全边界内（基于中心点）
+                let centerX = bubble.x; // 中心点X（百分比）
+                let centerY = bubble.y; // 中心点Y（百分比）
+                
+                // 边界检查：确保中心点 + 半尺寸不会超出容器
+                centerX = Math.max(bounds.minX, Math.min(bounds.maxX, centerX));
+                centerY = Math.max(bounds.minY, Math.min(bounds.maxY, centerY));
                 
                 // 计算移动范围，确保不超出空气墙
-                const availableRangeX = bounds.maxX - bounds.minX;
-                const availableRangeY = bounds.maxY - bounds.minY;
-                const moveRangeX = Math.min(2, availableRangeX * 0.15); // 最大移动2%或可用范围的15%
-                const moveRangeY = Math.min(2, availableRangeY * 0.15);
+                const availableRangeX = Math.max(0, bounds.maxX - bounds.minX);
+                const availableRangeY = Math.max(0, bounds.maxY - bounds.minY);
+                const moveRangeX = Math.min(1.5, availableRangeX * 0.1);
+                const moveRangeY = Math.min(1.5, availableRangeY * 0.1);
                 
-                // 计算移动目标位置，确保在空气墙内
+                // 计算移动目标位置（中心点）
                 const moveX = bubble.vx || (Math.random() - 0.5) * moveRangeX;
                 const moveY = bubble.vy || (Math.random() - 0.5) * moveRangeY;
                 
-                const targetX = Math.max(
-                  bounds.minX,
-                  Math.min(bounds.maxX, clampedX + moveX)
-                );
-                const targetY = Math.max(
-                  bounds.minY,
-                  Math.min(bounds.maxY, clampedY + moveY)
-                );
+                let targetX = centerX + moveX;
+                let targetY = centerY + moveY;
+                
+                // 严格限制目标位置（中心点必须在安全范围内）
+                targetX = Math.max(bounds.minX, Math.min(bounds.maxX, targetX));
+                targetY = Math.max(bounds.minY, Math.min(bounds.maxY, targetY));
                 
                 const moveDuration = 18 + Math.random() * 12; // 18-30秒，更慢的移动
                 const opacityDuration = 3 + Math.random() * 2; // 3-5秒
+                
+                // 将中心点百分比转换为像素位置
+                const centerXPx = (centerX / 100) * containerWidth;
+                const centerYPx = (centerY / 100) * containerHeight;
+                const targetXPx = (targetX / 100) * containerWidth;
+                const targetYPx = (targetY / 100) * containerHeight;
                 
                 return (
                   <motion.div
@@ -326,16 +475,16 @@ const Quotes = () => {
                     animate={{
                       opacity: [0.6, 0.85, 0.6],
                       scale: bubble.size,
-                      x: [`${clampedX}%`, `${targetX}%`, `${clampedX}%`],
-                      y: [`${clampedY}%`, `${targetY}%`, `${clampedY}%`],
+                      x: [centerXPx, targetXPx, centerXPx],
+                      y: [centerYPx, targetYPx, centerYPx],
                       rotate: bubble.rotation
                     }}
                     exit={{
                       opacity: [0.85, 0.5, 0],
                       scale: [bubble.size, bubble.size * 1.4, 0],
                       rotate: bubble.rotation + (Math.random() > 0.5 ? 180 : -180),
-                      x: `${clampedX + (Math.random() - 0.5) * 10}%`,
-                      y: `${clampedY + (Math.random() - 0.5) * 10}%`
+                      x: centerXPx + (Math.random() - 0.5) * (containerWidth * 0.1),
+                      y: centerYPx + (Math.random() - 0.5) * (containerHeight * 0.1)
                     }}
                     transition={{
                       opacity: {
@@ -370,71 +519,70 @@ const Quotes = () => {
                     }}
                     className="absolute cursor-pointer"
                     style={{
-                      left: `${clampedX}%`,
-                      top: `${clampedY}%`,
+                      left: 0,
+                      top: 0,
                       transform: 'translate(-50%, -50%)',
-                      width: `${200 + bubble.size * 100}px`,
-                      height: `${200 + bubble.size * 100}px`,
-                      maxWidth: '350px',
-                      maxHeight: '350px',
+                      maxWidth: `${250 + bubble.size * 50}px`,
+                      minWidth: '180px',
+                      pointerEvents: 'auto' // 恢复点击事件，因为父容器设置了 pointerEvents: 'none'
                     }}
                     onClick={() => handleBubbleClick(bubble.id)}
-                    whileHover={{ scale: bubble.size * 1.05 }}
-                    whileTap={{ scale: bubble.size * 0.9 }}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                   >
-                {/* 肥皂泡外层光晕 */}
+                {/* 微信风格气泡主体 */}
                 <div
-                  className="absolute inset-0 rounded-full"
+                  className={`rounded-2xl ${getBubbleColor(index)} border backdrop-blur-md flex flex-col p-4 relative`}
                   style={{
-                    background: `radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.1), transparent 70%)`,
-                    filter: 'blur(2px)',
-                    opacity: 0.6
-                  }}
-                />
-                
-                {/* 肥皂泡主体 */}
-                <div
-                  className={`absolute inset-0 rounded-full ${getBubbleColor(index)} border-2 backdrop-blur-sm flex flex-col items-center justify-center p-6`}
-                  style={{
-                    background: `radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.3), ${getBubbleGradientColor(index)}, transparent)`,
+                    background: `linear-gradient(135deg, 
+                      rgba(255, 255, 255, 0.25), 
+                      ${getBubbleGradientColor(index)}, 
+                      rgba(0, 0, 0, 0.15)
+                    )`,
+                    backdropFilter: 'blur(12px) saturate(180%)',
+                    WebkitBackdropFilter: 'blur(12px) saturate(180%)',
+                    backgroundColor: 'rgba(30, 30, 40, 0.7)',
                     boxShadow: `
-                      inset 0 0 20px rgba(255, 255, 255, 0.2),
-                      inset -20px -20px 30px rgba(0, 0, 0, 0.1),
-                      0 10px 30px rgba(0, 0, 0, 0.3)
+                      0 4px 20px rgba(0, 0, 0, 0.4),
+                      0 0 0 1px rgba(255, 255, 255, 0.15),
+                      inset 0 1px 0 rgba(255, 255, 255, 0.2)
                     `,
-                    fontSize: `${0.85 + bubble.size * 0.25}rem`,
-                    lineHeight: '1.5',
+                    fontSize: `${0.9 + bubble.size * 0.1}rem`,
+                    lineHeight: '1.6',
                     wordBreak: 'break-word',
-                    overflow: 'hidden'
+                    width: 'auto',
+                    display: 'inline-block',
+                    borderColor: 'rgba(255, 255, 255, 0.2)'
                   }}
                 >
-                  <div className="font-medium text-center text-white relative z-10">
+                  <div 
+                    className="font-medium relative z-10 leading-relaxed"
+                    style={{
+                      color: '#ffffff',
+                      textShadow: '0 1px 3px rgba(0, 0, 0, 0.5), 0 0 10px rgba(0, 0, 0, 0.3)',
+                      fontWeight: '500'
+                    }}
+                  >
                     {bubble.quote}
                   </div>
                   {bubble.category && (
-                    <div className="text-xs text-center mt-2 opacity-80 text-white relative z-10">
+                    <div 
+                      className="text-xs mt-2 relative z-10 text-right"
+                      style={{
+                        color: '#ffffff',
+                        textShadow: '0 1px 2px rgba(0, 0, 0, 0.4)',
+                        fontWeight: '400'
+                      }}
+                    >
                       {bubble.category}
                     </div>
                   )}
                 </div>
-                
-                {/* 肥皂泡高光 */}
-                <div
-                  className="absolute rounded-full"
-                  style={{
-                    width: '30%',
-                    height: '30%',
-                    top: '15%',
-                    left: '20%',
-                    background: 'radial-gradient(circle, rgba(255, 255, 255, 0.6), transparent)',
-                    filter: 'blur(1px)',
-                    pointerEvents: 'none'
-                  }}
-                />
               </motion.div>
                 );
               })}
-            </AnimatePresence>
+              </AnimatePresence>
+            </div>
             {displayedQuotes.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center text-gray-500">
                 <div className="text-center">
