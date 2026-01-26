@@ -1586,8 +1586,8 @@ public class WebViewBridge
                 osArchitecture = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture.ToString(),
                 machineName = Environment.MachineName,
                 userName = Environment.UserName,
-                appName = "RDTrackingSystem",
-                appType = "C# WinForms + WebView2"
+                appName = "AssetFlow",
+                appType = "C# WinForms"
             };
             
             return JsonConvert.SerializeObject(result, new JsonSerializerSettings
@@ -1603,7 +1603,7 @@ public class WebViewBridge
                 error = ex.Message,
                 version = "未知",
                 buildTime = "未知",
-                appName = "RDTrackingSystem",
+                appName = "AssetFlow",
                 appType = "C# WinForms + WebView2"
             }, new JsonSerializerSettings
             {

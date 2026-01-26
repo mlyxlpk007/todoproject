@@ -214,7 +214,7 @@ const HumanResources = () => {
     return (
         <div className="flex-1 flex flex-col bg-gray-900 text-gray-300 overflow-hidden">
             <Helmet>
-                <title>人力资源 - 研发订单跟踪系统</title>
+                <title>人力资源 - AssetFlow</title>
                 <meta name="description" content="研发团队人力资源概览与任务日历。" />
             </Helmet>
 

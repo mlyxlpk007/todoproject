@@ -65,7 +65,7 @@ export default {
   // 仪表盘
   dashboard: {
     title: '仪表盘',
-    welcome: '欢迎使用研发订单跟踪系统',
+    welcome: '欢迎使用 AssetFlow',
     totalProjects: '总项目数',
     activeProjects: '进行中项目',
     totalTasks: '总任务数',

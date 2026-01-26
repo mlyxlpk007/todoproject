@@ -36,10 +36,10 @@ function AppContent() {
   return (
     <>
       <Helmet>
-        <title>{t('dashboard.title')} - R&D Tracking System</title>
-        <meta name="description" content="A beautiful and efficient R&D order tracking system that clearly displays project progress in dashboard and timeline formats." />
-        <meta property="og:title" content={`${t('dashboard.title')} - R&D Tracking System`} />
-        <meta property="og:description" content="A beautiful and efficient R&D order tracking system that clearly displays project progress in dashboard and timeline formats." />
+        <title>{t('dashboard.title')} - AssetFlow</title>
+        <meta name="description" content="A beautiful and efficient asset flow management system that clearly displays project progress in dashboard and timeline formats." />
+        <meta property="og:title" content={`${t('dashboard.title')} - AssetFlow`} />
+        <meta property="og:description" content="A beautiful and efficient asset flow management system that clearly displays project progress in dashboard and timeline formats." />
       </Helmet>
       
       <div className="h-screen bg-gray-900 text-gray-100 overflow-hidden">

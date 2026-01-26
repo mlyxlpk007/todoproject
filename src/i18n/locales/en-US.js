@@ -65,7 +65,7 @@ export default {
   // Dashboard
   dashboard: {
     title: 'Dashboard',
-    welcome: 'Welcome to R&D Order Tracking System',
+    welcome: 'Welcome to AssetFlow',
     totalProjects: 'Total Projects',
     activeProjects: 'Active Projects',
     totalTasks: 'Total Tasks',

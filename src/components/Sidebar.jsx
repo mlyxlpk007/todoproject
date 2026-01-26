@@ -32,7 +32,7 @@ const Sidebar = () => {
             setAppInfo({
               version: info.version || t('common.unknown'),
               buildTime: info.buildTime || t('common.unknown'),
-              appName: info.appName || 'RDTrackingSystem',
+              appName: info.appName || 'AssetFlow',
               appType: info.appType || 'C# WinForms + WebView2'
             });
             console.log('[Sidebar] 已设置版本信息:', {
@@ -98,7 +98,7 @@ const Sidebar = () => {
         <div className="bg-indigo-600 p-2 rounded-lg">
           <Package size={24} className="text-white" />
         </div>
-        <h1 className="text-xl font-bold text-white">R&D Tracking</h1>
+        <h1 className="text-xl font-bold text-white">AssetFlow</h1>
       </div>
       
       <nav className="flex-grow">
