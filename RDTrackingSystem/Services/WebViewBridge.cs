@@ -176,6 +176,15 @@ public class WebViewBridge
                 .OrderBy(te => te.Date)
                 .ToList();
 
+            logger.LogInfo($"GetProject() 查询到 {timelineEvents.Count} 个 timeline 事件", "WebViewBridge");
+            if (timelineEvents.Any())
+            {
+                foreach (var evt in timelineEvents)
+                {
+                    logger.LogInfo($"GetProject() TimelineEvent: Id={evt.Id}, StageId={evt.StageId}, Date={evt.Date}, Description={evt.Description}", "WebViewBridge");
+                }
+            }
+
             var timeline = timelineEvents
                 .GroupBy(te => te.StageId)
                 .Select(g => new
@@ -194,6 +203,12 @@ public class WebViewBridge
                         } : null
                     }).OrderBy(e => e.date).ToList()
                 }).ToList();
+
+            logger.LogInfo($"GetProject() 转换后的 timeline 数组长度: {timeline.Count}", "WebViewBridge");
+            foreach (var stageTimeline in timeline)
+            {
+                logger.LogInfo($"GetProject() Timeline Stage: StageId={stageTimeline.stageId}, Events Count={stageTimeline.events.Count}", "WebViewBridge");
+            }
 
             var result = new
             {
@@ -332,6 +347,20 @@ public class WebViewBridge
             _context.Projects.Add(project);
             _context.SaveChanges();
 
+            // 自动保存相关方（销售）
+            if (!string.IsNullOrWhiteSpace(project.SalesName))
+            {
+                try
+                {
+                    StakeholderService.SaveStakeholderAsync(_context, project.SalesName, "sales").Wait();
+                    logger.LogInfo($"CreateProject() 已保存相关方: {project.SalesName} (销售)", "WebViewBridge");
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning($"CreateProject() 保存相关方失败: {ex.Message}", "WebViewBridge");
+                }
+            }
+
             logger.LogInfo($"项目创建成功，ID: {projectId}", "WebViewBridge");
             return JsonConvert.SerializeObject(new { id = project.Id, message = "项目创建成功" }, new JsonSerializerSettings
             {
@@ -383,14 +412,31 @@ public class WebViewBridge
                 });
             }
 
-            var projectData = JsonConvert.DeserializeObject<dynamic>(projectDataJson);
-            if (projectData == null)
+            logger.LogInfo($"UpdateProject() 接收到的 JSON 字符串长度: {projectDataJson?.Length ?? 0}", "WebViewBridge");
+            
+            if (string.IsNullOrEmpty(projectDataJson))
             {
+                logger.LogError("UpdateProject() 项目数据 JSON 字符串为空", null, "WebViewBridge");
                 return JsonConvert.SerializeObject(new { error = "项目数据为空" }, new JsonSerializerSettings
                 {
                     ContractResolver = new CamelCasePropertyNamesContractResolver()
                 });
             }
+            
+            var projectData = JsonConvert.DeserializeObject<dynamic>(projectDataJson);
+            if (projectData == null)
+            {
+                logger.LogError("UpdateProject() 项目数据反序列化后为 null", null, "WebViewBridge");
+                return JsonConvert.SerializeObject(new { error = "项目数据为空" }, new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            // 检查 timeline 数据是否存在
+            var timelineProperty = projectData.timeline;
+            logger.LogInfo($"UpdateProject() timeline 属性类型: {timelineProperty?.GetType()?.Name ?? "null"}", "WebViewBridge");
+            logger.LogInfo($"UpdateProject() timeline 属性值: {timelineProperty?.ToString() ?? "null"}", "WebViewBridge");
 
             // 检查订单号是否已存在（如果更改了订单号）
             string? newOrderNumber = projectData.orderNumber?.ToString();
@@ -406,6 +452,112 @@ public class WebViewBridge
                         ContractResolver = new CamelCasePropertyNamesContractResolver()
                     });
                 }
+            }
+
+            // 处理 timeline 事件（先删除旧的，再添加新的）
+            int expectedTimelineEventCount = 0;
+            if (projectData.timeline != null)
+            {
+                logger.LogInfo($"UpdateProject() 开始处理 timeline 事件", "WebViewBridge");
+                
+                // 删除该项目的所有旧事件
+                var oldEvents = _context.TimelineEvents
+                    .Where(te => te.ProjectId == id)
+                    .ToList();
+                
+                if (oldEvents.Any())
+                {
+                    logger.LogInfo($"UpdateProject() 删除 {oldEvents.Count} 个旧 timeline 事件", "WebViewBridge");
+                    _context.TimelineEvents.RemoveRange(oldEvents);
+                }
+                
+                // 处理 timeline 数据 - 需要正确处理 JToken 类型
+                Newtonsoft.Json.Linq.JToken? timelineToken = null;
+                
+                // 如果 timeline 是 JToken，直接使用；如果是字符串，先解析
+                if (projectData.timeline is Newtonsoft.Json.Linq.JToken token)
+                {
+                    timelineToken = token;
+                }
+                else
+                {
+                    var timelineJsonString = projectData.timeline?.ToString();
+                    if (!string.IsNullOrEmpty(timelineJsonString))
+                    {
+                        timelineToken = Newtonsoft.Json.Linq.JToken.Parse(timelineJsonString);
+                    }
+                }
+                
+                if (timelineToken != null && timelineToken is Newtonsoft.Json.Linq.JArray timelineArray)
+                {
+                    logger.LogInfo($"UpdateProject() timeline 是 JArray，包含 {timelineArray.Count} 个阶段", "WebViewBridge");
+                    
+                    int eventCount = 0;
+                    foreach (var stageTimelineToken in timelineArray)
+                    {
+                        if (stageTimelineToken is Newtonsoft.Json.Linq.JObject stageTimelineObj)
+                        {
+                            string stageId = stageTimelineObj["stageId"]?.ToString() ?? string.Empty;
+                            logger.LogInfo($"UpdateProject() 处理 StageId: {stageId}", "WebViewBridge");
+                            
+                            var eventsToken = stageTimelineObj["events"];
+                            if (eventsToken is Newtonsoft.Json.Linq.JArray eventsArray && eventsArray.Count > 0)
+                            {
+                                logger.LogInfo($"UpdateProject() StageId {stageId} 的 events 数量: {eventsArray.Count}", "WebViewBridge");
+                                
+                                foreach (var evtToken in eventsArray)
+                                {
+                                    if (evtToken is Newtonsoft.Json.Linq.JObject evtObj)
+                                    {
+                                        var eventId = evtObj["id"]?.ToString() ?? Guid.NewGuid().ToString();
+                                        var eventDate = evtObj["date"]?.ToString();
+                                        var eventDescription = evtObj["description"]?.ToString() ?? string.Empty;
+                                        
+                                        logger.LogInfo($"UpdateProject() 添加事件: Id={eventId}, Date={eventDate}, Description={eventDescription}", "WebViewBridge");
+                                        
+                                        var attachmentToken = evtObj["attachment"];
+                                        string? attachmentName = null;
+                                        string? attachmentType = null;
+                                        
+                                        if (attachmentToken != null && attachmentToken is Newtonsoft.Json.Linq.JObject attachmentObj)
+                                        {
+                                            attachmentName = attachmentObj["name"]?.ToString();
+                                            attachmentType = attachmentObj["type"]?.ToString();
+                                        }
+                                        
+                                        var timelineEvent = new TimelineEvent
+                                        {
+                                            Id = eventId,
+                                            ProjectId = id,
+                                            StageId = stageId,
+                                            Date = DateTime.TryParse(eventDate, out var date) ? date : DateTime.Now,
+                                            Description = eventDescription,
+                                            AttachmentName = attachmentName,
+                                            AttachmentType = attachmentType,
+                                            CreatedAt = DateTime.Now
+                                        };
+                                        _context.TimelineEvents.Add(timelineEvent);
+                                        eventCount++;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                logger.LogInfo($"UpdateProject() StageId {stageId} 没有 events 或 events 为空", "WebViewBridge");
+                            }
+                        }
+                    }
+                    expectedTimelineEventCount = eventCount;
+                    logger.LogInfo($"UpdateProject() 总共添加了 {eventCount} 个新 timeline 事件到上下文", "WebViewBridge");
+                }
+                else
+                {
+                    logger.LogWarning($"UpdateProject() timeline 数据格式不正确或为空，类型: {timelineToken?.GetType()?.Name ?? "null"}", "WebViewBridge");
+                }
+            }
+            else
+            {
+                logger.LogInfo($"UpdateProject() timeline 数据为 null，跳过处理", "WebViewBridge");
             }
 
             project.OrderNumber = projectData.orderNumber?.ToString() ?? project.OrderNumber;
@@ -424,8 +576,79 @@ public class WebViewBridge
             project.Notes = projectData.notes?.ToString();
             project.UpdatedAt = DateTime.Now;
 
-            _context.SaveChanges();
-            logger.LogInfo($"项目更新成功，ID: {id}", "WebViewBridge");
+            // 保存所有更改（包括 timeline 事件）
+            try
+            {
+                // 检查是否有待保存的 timeline 事件
+                var pendingTimelineEvents = _context.ChangeTracker.Entries<TimelineEvent>()
+                    .Where(e => e.State == Microsoft.EntityFrameworkCore.EntityState.Added)
+                    .Count();
+                logger.LogInfo($"UpdateProject() 准备保存，待添加的 timeline 事件数: {pendingTimelineEvents}，期望数量: {expectedTimelineEventCount}", "WebViewBridge");
+                
+                if (expectedTimelineEventCount > 0 && pendingTimelineEvents != expectedTimelineEventCount)
+                {
+                    logger.LogWarning($"UpdateProject() 警告：期望添加 {expectedTimelineEventCount} 个 timeline 事件，但上下文中只有 {pendingTimelineEvents} 个", "WebViewBridge");
+                }
+                
+                // 检查待删除的事件
+                var pendingDeletedEvents = _context.ChangeTracker.Entries<TimelineEvent>()
+                    .Where(e => e.State == Microsoft.EntityFrameworkCore.EntityState.Deleted)
+                    .Count();
+                logger.LogInfo($"UpdateProject() 准备删除的 timeline 事件数: {pendingDeletedEvents}", "WebViewBridge");
+                
+                var changeCount = _context.SaveChanges();
+                logger.LogInfo($"项目更新成功，ID: {id}，影响行数: {changeCount}", "WebViewBridge");
+                
+                // 自动保存相关方（销售）
+                if (!string.IsNullOrWhiteSpace(project.SalesName))
+                {
+                    try
+                    {
+                        StakeholderService.SaveStakeholderAsync(_context, project.SalesName, "sales").Wait();
+                        logger.LogInfo($"UpdateProject() 已保存相关方: {project.SalesName} (销售)", "WebViewBridge");
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning($"UpdateProject() 保存相关方失败: {ex.Message}", "WebViewBridge");
+                    }
+                }
+                
+                // 立即验证 timeline 事件是否已保存（使用新的查询，确保从数据库读取）
+                // 需要先清除 ChangeTracker 的缓存
+                _context.ChangeTracker.Clear();
+                
+                var savedEvents = _context.TimelineEvents
+                    .AsNoTracking()
+                    .Where(te => te.ProjectId == id)
+                    .ToList();
+                logger.LogInfo($"UpdateProject() 保存后验证：数据库中有 {savedEvents.Count} 个 timeline 事件，期望: {expectedTimelineEventCount}", "WebViewBridge");
+                
+                if (savedEvents.Any())
+                {
+                    foreach (var evt in savedEvents)
+                    {
+                        logger.LogInfo($"UpdateProject() 已保存的事件: Id={evt.Id}, StageId={evt.StageId}, Date={evt.Date}, Description={evt.Description}", "WebViewBridge");
+                    }
+                }
+                else if (expectedTimelineEventCount > 0)
+                {
+                    logger.LogError($"UpdateProject() 错误：期望保存 {expectedTimelineEventCount} 个 timeline 事件，但数据库中没有任何事件！", null, "WebViewBridge");
+                    throw new Exception($"Timeline 事件保存失败：期望保存 {expectedTimelineEventCount} 个事件，但数据库中没有任何事件");
+                }
+            }
+            catch (Exception saveEx)
+            {
+                logger.LogError($"UpdateProject() 保存失败: {saveEx.Message}", saveEx, "WebViewBridge");
+                logger.LogError($"UpdateProject() 保存异常堆栈: {saveEx.StackTrace}", saveEx, "WebViewBridge");
+                
+                // 如果是数据库相关错误，记录更多信息
+                if (saveEx is Microsoft.Data.Sqlite.SqliteException sqlEx)
+                {
+                    logger.LogError($"UpdateProject() SQLite 错误: {sqlEx.SqliteErrorCode} - {sqlEx.Message}", sqlEx, "WebViewBridge");
+                }
+                
+                throw;
+            }
 
             return JsonConvert.SerializeObject(new { message = "项目更新成功" }, new JsonSerializerSettings
             {
@@ -933,6 +1156,20 @@ public class WebViewBridge
                 _context.SaveChanges();
             }
 
+            // 自动保存相关方（利益方）
+            if (!string.IsNullOrWhiteSpace(task.Stakeholder))
+            {
+                try
+                {
+                    StakeholderService.SaveStakeholderAsync(_context, task.Stakeholder, "stakeholder").Wait();
+                    logger.LogInfo($"CreateTask() 已保存相关方: {task.Stakeholder} (利益方)", "WebViewBridge");
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning($"CreateTask() 保存相关方失败: {ex.Message}", "WebViewBridge");
+                }
+            }
+
             logger.LogInfo($"任务创建成功，ID: {task.Id}", "WebViewBridge");
             return JsonConvert.SerializeObject(new { id = task.Id, message = "任务创建成功" }, new JsonSerializerSettings
             {
@@ -1028,6 +1265,20 @@ public class WebViewBridge
 
             _context.SaveChanges();
             logger.LogInfo($"任务更新成功，ID: {id}", "WebViewBridge");
+
+            // 自动保存相关方（利益方）
+            if (!string.IsNullOrWhiteSpace(task.Stakeholder))
+            {
+                try
+                {
+                    StakeholderService.SaveStakeholderAsync(_context, task.Stakeholder, "stakeholder").Wait();
+                    logger.LogInfo($"UpdateTask() 已保存相关方: {task.Stakeholder} (利益方)", "WebViewBridge");
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning($"UpdateTask() 保存相关方失败: {ex.Message}", "WebViewBridge");
+                }
+            }
 
             return JsonConvert.SerializeObject(new { message = "任务更新成功" }, new JsonSerializerSettings
             {
@@ -1604,7 +1855,7 @@ public class WebViewBridge
                 version = "未知",
                 buildTime = "未知",
                 appName = "AssetFlow",
-                appType = "C# WinForms + WebView2"
+                appType = "C# WinForms"
             }, new JsonSerializerSettings
             {
                 ContractResolver = new CamelCasePropertyNamesContractResolver()
@@ -1623,7 +1874,8 @@ public class WebViewBridge
             string? backupName = null;
             
             // 处理参数：可能是null、JSON字符串或普通字符串
-            if (!string.IsNullOrEmpty(backupNameJson))
+            // 检查是否是字符串 "null"（前端传递 null 时可能被序列化为字符串）
+            if (!string.IsNullOrEmpty(backupNameJson) && backupNameJson.Trim().ToLower() != "null")
             {
                 // 尝试解析为JSON对象
                 if (backupNameJson.TrimStart().StartsWith("{"))
@@ -1634,6 +1886,11 @@ public class WebViewBridge
                         if (data != null)
                         {
                             backupName = data.backupName?.ToString();
+                            // 如果解析出的名称是 "null"，也视为未提供
+                            if (backupName?.Trim().ToLower() == "null")
+                            {
+                                backupName = null;
+                            }
                         }
                     }
                     catch
@@ -1644,8 +1901,32 @@ public class WebViewBridge
                 else
                 {
                     // 如果不是JSON格式，直接使用字符串作为备份名称
-                    backupName = backupNameJson;
+                    // 但如果字符串是 "null"，则视为未提供
+                    if (backupNameJson.Trim().ToLower() != "null")
+                    {
+                        backupName = backupNameJson;
+                    }
                 }
+            }
+
+            // 如果没有提供备份名称或名称为空，自动生成带时间戳的名称
+            if (string.IsNullOrWhiteSpace(backupName) || backupName == "null")
+            {
+                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                backupName = $"rdtracking_backup_{timestamp}";
+                logger.LogInfo($"CreateBackup() 自动生成备份名称: {backupName}", "WebViewBridge");
+            }
+            else
+            {
+                logger.LogInfo($"CreateBackup() 使用提供的备份名称: {backupName}", "WebViewBridge");
+            }
+            
+            // 再次检查，确保备份名称不为空或 "null"
+            if (string.IsNullOrWhiteSpace(backupName) || backupName == "null")
+            {
+                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                backupName = $"rdtracking_backup_{timestamp}";
+                logger.LogWarning($"CreateBackup() 备份名称仍为空或null，重新生成: {backupName}", "WebViewBridge");
             }
 
             var dbPath = DatabaseConstants.GetDatabasePath();
@@ -4367,6 +4648,80 @@ public class WebViewBridge
         }
     }
 
+    public string CreateProductVersion(string productId, string versionDataJson)
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo($"CreateProductVersion() 开始执行，ProductID: {productId}", "WebViewBridge");
+        try
+        {
+            var controller = new Controllers.ProductsController(_context, GetProductsControllerLogger());
+            var versionData = JsonConvert.DeserializeObject(versionDataJson);
+            var result = controller.CreateProductVersion(productId, versionData).Result;
+            var value = GetActionResultValue(result);
+            return JsonConvert.SerializeObject(value, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"创建产品版本失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new { error = ex.Message }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
+    public string UpdateProductVersion(string id, string versionDataJson)
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo($"UpdateProductVersion() 开始执行，ID: {id}", "WebViewBridge");
+        try
+        {
+            var controller = new Controllers.ProductsController(_context, GetProductsControllerLogger());
+            var versionData = JsonConvert.DeserializeObject(versionDataJson);
+            var result = controller.UpdateProductVersion(id, versionData).Result;
+            var value = GetActionResultValue(result);
+            return JsonConvert.SerializeObject(value, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"更新产品版本失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new { error = ex.Message }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
+    public string DeleteProductVersion(string id)
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo($"DeleteProductVersion() 开始执行，ID: {id}", "WebViewBridge");
+        try
+        {
+            var controller = new Controllers.ProductsController(_context, GetProductsControllerLogger());
+            var result = controller.DeleteProductVersion(id).Result;
+            var value = GetActionResultValue(result);
+            return JsonConvert.SerializeObject(value, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"删除产品版本失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new { error = ex.Message }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
     public string UpdateProduct(string id, string productDataJson)
     {
         var logger = FileLogger.Instance;
@@ -4991,5 +5346,117 @@ public class WebViewBridge
                 ContractResolver = new CamelCasePropertyNamesContractResolver()
             });
         }
+    }
+
+    // ========== 报告 API ==========
+    public string GetPersonReport(string reportDataJson)
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo("GetPersonReport() 开始执行", "WebViewBridge");
+        try
+        {
+            var controller = new Controllers.ReportsController(_context, GetReportsControllerLogger());
+            var reportData = JsonConvert.DeserializeObject(reportDataJson) ?? new { };
+            var result = controller.GetPersonReport(reportData).Result;
+            var value = GetActionResultValue(result);
+            return JsonConvert.SerializeObject(value, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"获取人员报告失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new { error = ex.Message }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
+    public string GetEngineerReport(string reportDataJson)
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo("GetEngineerReport() 开始执行", "WebViewBridge");
+        try
+        {
+            var controller = new Controllers.ReportsController(_context, GetReportsControllerLogger());
+            var reportData = JsonConvert.DeserializeObject(reportDataJson) ?? new { };
+            var result = controller.GetEngineerReport(reportData).Result;
+            var value = GetActionResultValue(result);
+            return JsonConvert.SerializeObject(value, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"获取工程师报告失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new { error = ex.Message }, new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
+    private ILogger<Controllers.ReportsController> GetReportsControllerLogger()
+    {
+        return Microsoft.Extensions.Logging.Abstractions.NullLogger<Controllers.ReportsController>.Instance;
+    }
+
+    // ========== 相关方 API ==========
+    public string GetStakeholders()
+    {
+        var logger = FileLogger.Instance;
+        logger.LogInfo("GetStakeholders() 开始执行", "WebViewBridge");
+        try
+        {
+            if (_context == null)
+            {
+                return JsonConvert.SerializeObject(new List<object>(), new JsonSerializerSettings
+                {
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
+                });
+            }
+
+            DatabaseSchemaMigrator.MigrateSchema();
+            
+            var stakeholders = _context.Stakeholders
+                .OrderBy(s => s.Name)
+                .ToList();
+
+            var result = stakeholders.Select(s => new
+            {
+                id = s.Id,
+                name = s.Name,
+                type = s.Type,
+                email = s.Email,
+                phone = s.Phone,
+                company = s.Company,
+                notes = s.Notes,
+                createdAt = s.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
+                updatedAt = s.UpdatedAt.ToString("yyyy-MM-dd HH:mm:ss")
+            }).ToList();
+
+            logger.LogInfo($"GetStakeholders() 成功，返回 {result.Count} 个相关方", "WebViewBridge");
+            return JsonConvert.SerializeObject(result, Formatting.None, new JsonSerializerSettings
+            {
+                NullValueHandling = NullValueHandling.Ignore,
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"获取相关方列表失败: {ex.Message}", ex, "WebViewBridge");
+            return JsonConvert.SerializeObject(new List<object>(), new JsonSerializerSettings
+            {
+                ContractResolver = new CamelCasePropertyNamesContractResolver()
+            });
+        }
+    }
+
+    private ILogger<Controllers.StakeholdersController> GetStakeholdersControllerLogger()
+    {
+        return Microsoft.Extensions.Logging.Abstractions.NullLogger<Controllers.StakeholdersController>.Instance;
     }
 }

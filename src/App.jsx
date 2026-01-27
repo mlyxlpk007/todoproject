@@ -20,9 +20,14 @@ import ProductCatalog from '@/pages/ProductCatalog';
 import ProductEdit from '@/pages/ProductEdit';
 import ProductVersions from '@/pages/ProductVersions';
 import ProductAnalytics from '@/pages/ProductAnalytics';
+import CostManagement from '@/pages/CostManagement';
+import CostEdit from '@/pages/CostEdit';
+import CostDetail from '@/pages/CostDetail';
+import CostAnalysis from '@/pages/CostAnalysis';
 import Quotes from '@/pages/Quotes';
 import DataManagement from '@/pages/DataManagement';
 import TestData from '@/pages/TestData';
+import Reports from '@/pages/Reports';
 import Sidebar from '@/components/Sidebar';
 import ManagementPhilosophy from '@/components/ManagementPhilosophy';
 import { useDataInitializer } from '@/hooks/useDataInitializer';
@@ -69,7 +74,13 @@ function AppContent() {
                                 <Route path="/products/edit/:id" element={<ProductEdit />} />
                                 <Route path="/products/versions" element={<ProductVersions />} />
                                 <Route path="/products/analytics" element={<ProductAnalytics />} />
+                                <Route path="/cost-management" element={<CostManagement />} />
+                                <Route path="/cost-management/new" element={<CostEdit />} />
+                                <Route path="/cost-management/:id/analysis" element={<CostAnalysis />} />
+                                <Route path="/cost-management/:id/edit" element={<CostEdit />} />
+                                <Route path="/cost-management/:id" element={<CostDetail />} />
                                 <Route path="/quotes" element={<Quotes />} />
+                                <Route path="/reports" element={<Reports />} />
                                 <Route path="/data-management" element={<DataManagement />} />
                                 <Route path="/test-data" element={<TestData />} />
                             </Routes>

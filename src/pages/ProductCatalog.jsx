@@ -25,6 +25,8 @@ const ProductCatalog = () => {
     try {
       setLoading(true);
       const data = await productsApi.getAll();
+      console.log('[ProductCatalog] 加载的产品数据:', data);
+      console.log('[ProductCatalog] 第一个产品的 currentVersion:', data?.[0]?.currentVersion);
       setProducts(data || []);
     } catch (error) {
       console.error('加载产品失败:', error);
@@ -169,7 +171,7 @@ const ProductCatalog = () => {
                 </div>
                 <div className="space-y-2 text-sm text-gray-400">
                   <p><span className="text-gray-500">{t('productManagement.productCode')}:</span> {product.code || '-'}</p>
-                  <p><span className="text-gray-500">{t('productManagement.currentVersion')}:</span> {product.version || '-'}</p>
+                  <p><span className="text-gray-500">{t('productManagement.currentVersion')}:</span> {product.currentVersion || '-'}</p>
                   <p><span className="text-gray-500">{t('productManagement.status')}:</span> {product.status || '-'}</p>
                 </div>
               </motion.div>

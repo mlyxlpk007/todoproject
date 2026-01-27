@@ -450,6 +450,84 @@ public class ProductsController : ControllerBase
         }
     }
 
+    [HttpPut("versions/{id}")]
+    public async Task<ActionResult> UpdateProductVersion(string id, [FromBody] dynamic versionData)
+    {
+        try
+        {
+            DatabaseSchemaMigrator.MigrateSchema();
+            
+            var version = await _context.ProductVersions.FindAsync(id);
+            if (version == null)
+            {
+                return NotFound(new { error = "版本不存在" });
+            }
+
+            if (versionData.version != null)
+            {
+                version.Version = versionData.version.ToString();
+            }
+            if (versionData.description != null)
+            {
+                version.Description = versionData.description?.ToString();
+            }
+            if (versionData.status != null)
+            {
+                version.Status = versionData.status.ToString();
+            }
+            if (versionData.releaseDate != null)
+            {
+                if (DateTime.TryParse(versionData.releaseDate.ToString(), out DateTime releaseDate))
+                {
+                    version.ReleaseDate = releaseDate;
+                }
+            }
+
+            // 如果这是稳定版本，更新产品的当前版本
+            if (version.Status == "stable")
+            {
+                var product = await _context.Products.FindAsync(version.ProductId);
+                if (product != null)
+                {
+                    product.CurrentVersion = version.Version;
+                    product.UpdatedAt = DateTime.Now;
+                }
+            }
+            
+            await _context.SaveChangesAsync();
+            return Ok(new { message = "产品版本更新成功" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "更新产品版本失败");
+            return StatusCode(500, new { error = $"更新产品版本失败: {ex.Message}" });
+        }
+    }
+
+    [HttpDelete("versions/{id}")]
+    public async Task<ActionResult> DeleteProductVersion(string id)
+    {
+        try
+        {
+            DatabaseSchemaMigrator.MigrateSchema();
+            
+            var version = await _context.ProductVersions.FindAsync(id);
+            if (version == null)
+            {
+                return NotFound(new { error = "版本不存在" });
+            }
+
+            _context.ProductVersions.Remove(version);
+            await _context.SaveChangesAsync();
+            return Ok(new { message = "产品版本已删除" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "删除产品版本失败");
+            return StatusCode(500, new { error = $"删除产品版本失败: {ex.Message}" });
+        }
+    }
+
     // ========== 模块管理 ==========
     [HttpPost("{productId}/modules")]
     public async Task<ActionResult<object>> CreateModule(string productId, [FromBody] dynamic moduleData)
@@ -464,11 +542,13 @@ public class ProductsController : ControllerBase
                 return NotFound(new { error = "产品不存在" });
             }
 
-            var maxOrder = await _context.ProductModules
+            // 先查询所有模块，然后在客户端计算最大值（因为 DefaultIfEmpty 无法被翻译）
+            var modules = await _context.ProductModules
                 .Where(m => m.ProductId == productId)
-                .Select(m => (int?)m.OrderIndex)
-                .DefaultIfEmpty(-1)
-                .MaxAsync() ?? -1;
+                .Select(m => m.OrderIndex)
+                .ToListAsync();
+            
+            var maxOrder = modules.Any() ? modules.Max() : -1;
 
             var module = new ProductModule
             {
@@ -562,11 +642,13 @@ public class ProductsController : ControllerBase
                 return NotFound(new { error = "模块不存在" });
             }
 
-            var maxOrder = await _context.ProductSubModules
+            // 先查询所有子模块，然后在客户端计算最大值（因为 DefaultIfEmpty 无法被翻译）
+            var subModules = await _context.ProductSubModules
                 .Where(sm => sm.ModuleId == moduleId)
-                .Select(sm => (int?)sm.OrderIndex)
-                .DefaultIfEmpty(-1)
-                .MaxAsync() ?? -1;
+                .Select(sm => sm.OrderIndex)
+                .ToListAsync();
+            
+            var maxOrder = subModules.Any() ? subModules.Max() : -1;
 
             var subModule = new ProductSubModule
             {
@@ -658,11 +740,13 @@ public class ProductsController : ControllerBase
                 return NotFound(new { error = "子模块不存在" });
             }
 
-            var maxOrder = await _context.ProductFunctions
+            // 先查询所有功能，然后在客户端计算最大值（因为 DefaultIfEmpty 无法被翻译）
+            var functions = await _context.ProductFunctions
                 .Where(f => f.SubModuleId == subModuleId)
-                .Select(f => (int?)f.OrderIndex)
-                .DefaultIfEmpty(-1)
-                .MaxAsync() ?? -1;
+                .Select(f => f.OrderIndex)
+                .ToListAsync();
+            
+            var maxOrder = functions.Any() ? functions.Max() : -1;
 
             var function = new ProductFunction
             {

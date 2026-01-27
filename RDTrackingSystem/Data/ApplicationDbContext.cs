@@ -31,6 +31,12 @@ public class ApplicationDbContext : DbContext
     public DbSet<ProductFunctionCustomer> ProductFunctionCustomers { get; set; } = null!;
     public DbSet<ProductFunctionTask> ProductFunctionTasks { get; set; } = null!;
     public DbSet<ProductVersion> ProductVersions { get; set; } = null!;
+    public DbSet<ProductCost> ProductCosts { get; set; } = null!;
+    public DbSet<BomItem> BomItems { get; set; } = null!;
+    public DbSet<LaborCost> LaborCosts { get; set; } = null!;
+    public DbSet<ManufacturingCost> ManufacturingCosts { get; set; } = null!;
+    public DbSet<ProductPricing> ProductPricings { get; set; } = null!;
+    public DbSet<Stakeholder> Stakeholders { get; set; } = null!;
 
     // 用于依赖注入的构造函数
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
@@ -403,6 +409,133 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Version).HasMaxLength(50).IsRequired();
             entity.Property(e => e.Status).HasMaxLength(50).HasDefaultValue("draft");
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("datetime('now')");
+        });
+        
+        // ========== ProductCost 表配置 ==========
+        modelBuilder.Entity<ProductCost>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(pc => pc.Product)
+                  .WithMany()
+                  .HasForeignKey(pc => pc.ProductId)
+                  .OnDelete(DeleteBehavior.Cascade)
+                  .HasConstraintName("FK_ProductCosts_Products");
+            entity.HasOne(pc => pc.ProductVersion)
+                  .WithMany()
+                  .HasForeignKey(pc => pc.ProductVersionId)
+                  .OnDelete(DeleteBehavior.SetNull)
+                  .HasConstraintName("FK_ProductCosts_ProductVersions");
+            entity.HasIndex(e => e.ProductId).HasDatabaseName("IX_ProductCosts_ProductId");
+            entity.HasIndex(e => e.ProductVersionId).HasDatabaseName("IX_ProductCosts_ProductVersionId");
+            entity.HasIndex(e => e.ProjectId).HasDatabaseName("IX_ProductCosts_ProjectId");
+            entity.HasIndex(e => e.Status).HasDatabaseName("IX_ProductCosts_Status");
+            entity.Property(e => e.Id).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.ProductId).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Status).HasMaxLength(50).HasDefaultValue("draft");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("datetime('now')");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("datetime('now')");
+        });
+        
+        // ========== BomItem 表配置 ==========
+        modelBuilder.Entity<BomItem>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(bi => bi.ProductCost)
+                  .WithMany(pc => pc.BomItems)
+                  .HasForeignKey(bi => bi.ProductCostId)
+                  .OnDelete(DeleteBehavior.Cascade)
+                  .HasConstraintName("FK_BomItems_ProductCosts");
+            entity.HasIndex(e => e.ProductCostId).HasDatabaseName("IX_BomItems_ProductCostId");
+            entity.HasIndex(e => e.MaterialType).HasDatabaseName("IX_BomItems_MaterialType");
+            entity.HasIndex(e => e.Category).HasDatabaseName("IX_BomItems_Category");
+            entity.Property(e => e.Id).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.ProductCostId).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.MaterialName).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Unit).HasMaxLength(50).HasDefaultValue("pcs");
+            entity.Property(e => e.Quantity).HasDefaultValue(1);
+            entity.Property(e => e.UnitPrice).HasDefaultValue(0);
+            entity.Property(e => e.TotalPrice).HasDefaultValue(0);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("datetime('now')");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("datetime('now')");
+        });
+        
+        // ========== LaborCost 表配置 ==========
+        modelBuilder.Entity<LaborCost>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(lc => lc.ProductCost)
+                  .WithMany(pc => pc.LaborCosts)
+                  .HasForeignKey(lc => lc.ProductCostId)
+                  .OnDelete(DeleteBehavior.Cascade)
+                  .HasConstraintName("FK_LaborCosts_ProductCosts");
+            entity.HasIndex(e => e.ProductCostId).HasDatabaseName("IX_LaborCosts_ProductCostId");
+            entity.HasIndex(e => e.TaskId).HasDatabaseName("IX_LaborCosts_TaskId");
+            entity.HasIndex(e => e.ProjectId).HasDatabaseName("IX_LaborCosts_ProjectId");
+            entity.HasIndex(e => e.AssetId).HasDatabaseName("IX_LaborCosts_AssetId");
+            entity.HasIndex(e => e.EngineerId).HasDatabaseName("IX_LaborCosts_EngineerId");
+            entity.Property(e => e.Id).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.ProductCostId).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Hours).HasDefaultValue(0);
+            entity.Property(e => e.HourlyRate).HasDefaultValue(0);
+            entity.Property(e => e.TotalCost).HasDefaultValue(0);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("datetime('now')");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("datetime('now')");
+        });
+        
+        // ========== ManufacturingCost 表配置 ==========
+        modelBuilder.Entity<ManufacturingCost>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(mc => mc.ProductCost)
+                  .WithMany(pc => pc.ManufacturingCosts)
+                  .HasForeignKey(mc => mc.ProductCostId)
+                  .OnDelete(DeleteBehavior.Cascade)
+                  .HasConstraintName("FK_ManufacturingCosts_ProductCosts");
+            entity.HasIndex(e => e.ProductCostId).HasDatabaseName("IX_ManufacturingCosts_ProductCostId");
+            entity.HasIndex(e => e.CostType).HasDatabaseName("IX_ManufacturingCosts_CostType");
+            entity.Property(e => e.Id).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.ProductCostId).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.CostName).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Unit).HasMaxLength(50).HasDefaultValue("pcs");
+            entity.Property(e => e.Quantity).HasDefaultValue(1);
+            entity.Property(e => e.UnitCost).HasDefaultValue(0);
+            entity.Property(e => e.TotalCost).HasDefaultValue(0);
+            entity.Property(e => e.Coefficient).HasDefaultValue(1.0m);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("datetime('now')");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("datetime('now')");
+        });
+        
+        // ========== ProductPricing 表配置 ==========
+        modelBuilder.Entity<ProductPricing>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(pp => pp.ProductCost)
+                  .WithMany()
+                  .HasForeignKey(pp => pp.ProductCostId)
+                  .OnDelete(DeleteBehavior.Cascade)
+                  .HasConstraintName("FK_ProductPricings_ProductCosts");
+            entity.HasIndex(e => e.ProductCostId).HasDatabaseName("IX_ProductPricings_ProductCostId");
+            entity.HasIndex(e => e.Market).HasDatabaseName("IX_ProductPricings_Market");
+            entity.Property(e => e.Id).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.ProductCostId).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.SellingPrice).HasDefaultValue(0);
+            entity.Property(e => e.Currency).HasMaxLength(50).HasDefaultValue("CNY");
+            entity.Property(e => e.EffectiveDate).HasDefaultValueSql("datetime('now')");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("datetime('now')");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("datetime('now')");
+        });
+        
+        // ========== Stakeholder 表配置 ==========
+        modelBuilder.Entity<Stakeholder>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Name).HasDatabaseName("IX_Stakeholders_Name");
+            entity.HasIndex(e => e.Type).HasDatabaseName("IX_Stakeholders_Type");
+            entity.Property(e => e.Id).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Type).HasMaxLength(50).HasDefaultValue("stakeholder");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("datetime('now')");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("datetime('now')");
         });
     }
 

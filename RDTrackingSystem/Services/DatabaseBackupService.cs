@@ -33,14 +33,29 @@ public static class DatabaseBackupService
             }
 
             // 生成备份文件名
-            if (string.IsNullOrWhiteSpace(backupName))
+            if (string.IsNullOrWhiteSpace(backupName) || backupName == "null")
             {
                 var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
                 backupName = $"rdtracking_backup_{timestamp}";
+                logger?.LogInformation("CreateBackup() 自动生成备份名称: {BackupName}", backupName);
+            }
+            else
+            {
+                logger?.LogInformation("CreateBackup() 使用提供的备份名称: {BackupName}", backupName);
+            }
+
+            // 确保备份名称不为空或 "null"
+            if (string.IsNullOrWhiteSpace(backupName) || backupName == "null")
+            {
+                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                backupName = $"rdtracking_backup_{timestamp}";
+                logger?.LogWarning("CreateBackup() 备份名称仍为空或null，重新生成: {BackupName}", backupName);
             }
 
             var backupPath = Path.Combine(BackupDirectory, $"{backupName}.db");
             var backupZipPath = Path.Combine(BackupDirectory, $"{backupName}.zip");
+            
+            logger?.LogInformation("CreateBackup() 备份文件路径: {BackupZipPath}", backupZipPath);
 
             // 如果备份文件已存在，添加序号
             int counter = 1;
@@ -435,6 +450,16 @@ public static class DatabaseBackupService
                             var metadata = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(metadataJson);
                             if (metadata != null)
                             {
+                                // 优先使用元数据中的 BackupName 作为文件名
+                                if (metadata.ContainsKey("BackupName"))
+                                {
+                                    var backupName = metadata["BackupName"]?.ToString();
+                                    if (!string.IsNullOrWhiteSpace(backupName))
+                                    {
+                                        backupInfo.FileName = $"{backupName}.zip";
+                                    }
+                                }
+                                
                                 if (metadata.ContainsKey("CreatedAt") && DateTime.TryParse(metadata["CreatedAt"].ToString(), out var createdAt))
                                 {
                                     backupInfo.CreatedAt = createdAt;
@@ -448,6 +473,22 @@ public static class DatabaseBackupService
                         catch
                         {
                             // 忽略元数据读取错误
+                        }
+                    }
+                    
+                    // 如果文件名是 null.zip 或空，尝试从文件路径提取
+                    if (string.IsNullOrWhiteSpace(backupInfo.FileName) || backupInfo.FileName == "null.zip")
+                    {
+                        var fileNameWithoutExt = Path.GetFileNameWithoutExtension(backupFile);
+                        if (!string.IsNullOrWhiteSpace(fileNameWithoutExt) && fileNameWithoutExt != "null")
+                        {
+                            backupInfo.FileName = $"{fileNameWithoutExt}.zip";
+                        }
+                        else
+                        {
+                            // 如果还是 null，使用时间戳生成一个名称
+                            var timestamp = fileInfo.CreationTime.ToString("yyyyMMdd_HHmmss");
+                            backupInfo.FileName = $"rdtracking_backup_{timestamp}.zip";
                         }
                     }
 

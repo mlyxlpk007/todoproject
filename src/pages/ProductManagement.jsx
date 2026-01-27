@@ -1,13 +1,53 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useI18n } from '@/i18n/I18nContext';
+import { useToast } from '@/components/ui/use-toast';
 import { List, Package, BarChart3, FileText, ShoppingBag, Layers, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { productsApi } from '@/lib/api';
 
 const ProductManagement = () => {
   const { t } = useI18n();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const [stats, setStats] = useState({
+    totalProducts: 0,
+    activeVersions: 0,
+    relatedProjects: 0,
+    recentProducts: []
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadStats();
+  }, []);
+
+  const loadStats = async () => {
+    try {
+      setLoading(true);
+      const [products, analytics] = await Promise.all([
+        productsApi.getAll().catch(() => []),
+        productsApi.getAnalytics().catch(() => null)
+      ]);
+      
+      setStats({
+        totalProducts: products?.length || 0,
+        activeVersions: analytics?.activeVersions || 0,
+        relatedProjects: analytics?.relatedProjects || 0,
+        recentProducts: products?.slice(0, 5) || []
+      });
+    } catch (error) {
+      console.error('加载统计数据失败:', error);
+      toast({ 
+        title: t('common.error'), 
+        description: t('productManagement.loadFailed'), 
+        variant: "destructive" 
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -70,7 +110,9 @@ const ProductManagement = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-400">{t('productManagement.totalProducts')}</p>
-                <p className="text-2xl font-bold text-white mt-1">0</p>
+                <p className="text-2xl font-bold text-white mt-1">
+                  {loading ? '...' : stats.totalProducts}
+                </p>
               </div>
               <Package className="w-8 h-8 text-indigo-400" />
             </div>
@@ -85,7 +127,9 @@ const ProductManagement = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-400">{t('productManagement.activeVersions')}</p>
-                <p className="text-2xl font-bold text-white mt-1">0</p>
+                <p className="text-2xl font-bold text-white mt-1">
+                  {loading ? '...' : stats.activeVersions}
+                </p>
               </div>
               <Layers className="w-8 h-8 text-green-400" />
             </div>
@@ -100,7 +144,9 @@ const ProductManagement = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-400">{t('productManagement.relatedProjects')}</p>
-                <p className="text-2xl font-bold text-white mt-1">0</p>
+                <p className="text-2xl font-bold text-white mt-1">
+                  {loading ? '...' : stats.relatedProjects}
+                </p>
               </div>
               <FileText className="w-8 h-8 text-blue-400" />
             </div>
@@ -115,10 +161,41 @@ const ProductManagement = () => {
           className="bg-gray-800/50 rounded-lg p-6 border border-gray-700"
         >
           <h2 className="text-xl font-semibold text-white mb-4">{t('productManagement.recentUpdates')}</h2>
-          <div className="text-center py-8 text-gray-500">
-            <Package className="w-12 h-12 mx-auto mb-3 text-gray-600" />
-            <p>{t('productManagement.noProducts')}</p>
-          </div>
+          {loading ? (
+            <div className="text-center py-8 text-gray-500">
+              <p>{t('common.loading')}</p>
+            </div>
+          ) : stats.recentProducts.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <Package className="w-12 h-12 mx-auto mb-3 text-gray-600" />
+              <p>{t('productManagement.noProducts')}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {stats.recentProducts.map((product) => (
+                <div
+                  key={product.id}
+                  className="flex items-center justify-between p-3 bg-gray-700/30 rounded-lg hover:bg-gray-700/50 transition-colors cursor-pointer"
+                  onClick={() => navigate(`/products/edit/${product.id}`)}
+                >
+                  <div className="flex items-center gap-3">
+                    <Package className="w-5 h-5 text-indigo-400" />
+                    <div>
+                      <p className="font-medium text-white">{product.name}</p>
+                      <p className="text-sm text-gray-400">{product.code} - {product.currentVersion || '-'}</p>
+                    </div>
+                  </div>
+                  <span className={`px-2 py-1 rounded-full text-xs ${
+                    product.status === 'active' ? 'bg-green-500/20 text-green-400' :
+                    product.status === 'archived' ? 'bg-gray-500/20 text-gray-400' :
+                    'bg-red-500/20 text-red-400'
+                  }`}>
+                    {product.status || 'active'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </motion.div>
       </div>
     </div>

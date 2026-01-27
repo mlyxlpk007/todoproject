@@ -71,6 +71,16 @@ const ProjectDetails = () => {
   const loadProject = async () => {
     try {
       const currentProject = await projectsApi.getById(id);
+      console.log('[ProjectDetails] 加载的项目数据:', currentProject);
+      console.log('[ProjectDetails] timeline 数据:', currentProject?.timeline);
+      console.log('[ProjectDetails] timeline 类型:', typeof currentProject?.timeline, '是否为数组:', Array.isArray(currentProject?.timeline));
+      if (currentProject?.timeline) {
+        console.log('[ProjectDetails] timeline 长度:', currentProject.timeline.length);
+        currentProject.timeline.forEach((stageTimeline, index) => {
+          console.log(`[ProjectDetails] timeline[${index}]:`, stageTimeline);
+          console.log(`[ProjectDetails] timeline[${index}].events:`, stageTimeline?.events);
+        });
+      }
       setProject(currentProject);
     } catch (error) {
       console.error('加载项目失败:', error);
@@ -115,13 +125,26 @@ const ProjectDetails = () => {
       
       const newCurrentStageId = newEvent.stageId;
       
-      await projectsApi.update(id, {
+      console.log('[ProjectDetails] 准备保存 timeline:', newTimeline);
+      console.log('[ProjectDetails] 保存的数据:', {
         ...project,
         timeline: newTimeline,
         currentStageId: newCurrentStageId
       });
+      
+      const updateResult = await projectsApi.update(id, {
+        ...project,
+        timeline: newTimeline,
+        currentStageId: newCurrentStageId
+      });
+      
+      console.log('[ProjectDetails] 保存结果:', updateResult);
 
+      console.log('[ProjectDetails] 保存完成，等待 500ms 后重新加载项目...');
+      // 等待一小段时间，确保数据库保存完成
+      await new Promise(resolve => setTimeout(resolve, 500));
       await loadProject();
+      console.log('[ProjectDetails] 重新加载完成');
       setIsAddingEvent(false);
       setNewEvent({ stageId: '', date: '', description: '', attachment: null });
       toast({ title: "事件添加成功！" });
@@ -199,20 +222,33 @@ const ProjectDetails = () => {
 
   // 将所有事件按时间顺序排列
   const sortedTimelineEvents = [];
-  project.timeline.forEach(timelineData => {
-    const stage = mainStages.find(s => s.id === timelineData.stageId);
-    if (stage && timelineData.events) {
-      timelineData.events.forEach(event => {
-        sortedTimelineEvents.push({
-          ...event,
-          stageId: timelineData.stageId,
-          stageName: stage.name,
-          stageColor: stage.color,
-          stageGroup: stage.group
+  console.log('[ProjectDetails] 渲染时 project.timeline:', project?.timeline);
+  if (project?.timeline && Array.isArray(project.timeline)) {
+    project.timeline.forEach((timelineData, index) => {
+      console.log(`[ProjectDetails] 处理 timeline[${index}]:`, timelineData);
+      const stage = mainStages.find(s => s.id === timelineData.stageId);
+      console.log(`[ProjectDetails] 找到的 stage:`, stage);
+      if (stage && timelineData.events && Array.isArray(timelineData.events)) {
+        console.log(`[ProjectDetails] timeline[${index}].events 数量:`, timelineData.events.length);
+        timelineData.events.forEach((event, eventIndex) => {
+          console.log(`[ProjectDetails] 添加事件[${eventIndex}]:`, event);
+          sortedTimelineEvents.push({
+            ...event,
+            stageId: timelineData.stageId,
+            stageName: stage.name,
+            stageColor: stage.color,
+            stageGroup: stage.group
+          });
         });
-      });
-    }
-  });
+      } else {
+        console.warn(`[ProjectDetails] timeline[${index}] 无效:`, { stage, events: timelineData.events });
+      }
+    });
+  } else {
+    console.warn('[ProjectDetails] project.timeline 不存在或不是数组:', project?.timeline);
+  }
+  
+  console.log('[ProjectDetails] sortedTimelineEvents 总数:', sortedTimelineEvents.length);
   
   // 按日期排序（从早到晚）
   sortedTimelineEvents.sort((a, b) => {
@@ -373,6 +409,13 @@ const ProjectDetails = () => {
         {sortedTimelineEvents.length === 0 ? (
           <div className="pl-8 py-8 text-center text-gray-400">
             <p>暂无时间线事件，点击"添加时间节点"开始记录项目进展</p>
+            {process.env.NODE_ENV === 'development' && (
+              <div className="mt-4 text-xs text-gray-500">
+                <p>调试信息:</p>
+                <p>project.timeline: {JSON.stringify(project?.timeline)}</p>
+                <p>sortedTimelineEvents.length: {sortedTimelineEvents.length}</p>
+              </div>
+            )}
           </div>
         ) : (
           sortedTimelineEvents.map((event, index) => (

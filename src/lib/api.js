@@ -201,7 +201,12 @@ export const projectsApi = {
   
   getById: async (id) => {
     if (useNativeBridge) {
-      return nativeRequest('GetProject', id);
+      const result = await nativeRequest('GetProject', id);
+      // nativeRequest 已经解析了 JSON，直接返回
+      const parsedResult = typeof result === 'string' ? JSON.parse(result) : result;
+      console.log('[projectsApi.getById] 返回结果:', parsedResult);
+      console.log('[projectsApi.getById] timeline:', parsedResult?.timeline);
+      return parsedResult;
     }
     return httpRequest(`projects/${id}`);
   },
@@ -223,7 +228,11 @@ export const projectsApi = {
   
   update: async (id, data) => {
     if (useNativeBridge) {
+      console.log('[projectsApi.update] 准备更新项目，ID:', id);
+      console.log('[projectsApi.update] 更新数据:', data);
+      console.log('[projectsApi.update] timeline 数据:', data?.timeline);
       const result = await nativeRequest('UpdateProject', id, data);
+      console.log('[projectsApi.update] 更新结果:', result);
       if (result && result.error) {
         throw new Error(result.error);
       }
@@ -951,7 +960,11 @@ export const productsApi = {
   getById: async (id) => {
     if (useNativeBridge) {
       const result = await nativeRequest('GetProduct', id);
-      return typeof result === 'string' ? JSON.parse(result) : result;
+      // nativeRequest 已经解析了 JSON，直接返回
+      const finalResult = typeof result === 'string' ? JSON.parse(result) : result;
+      console.log('[productsApi.getById] 返回结果:', finalResult);
+      console.log('[productsApi.getById] currentVersion:', finalResult?.currentVersion);
+      return finalResult;
     }
     return httpRequest(`products/${id}`);
   },
@@ -1015,6 +1028,51 @@ export const productsApi = {
       return Array.isArray(result) ? result : [];
     }
     return httpRequest('products/versions');
+  },
+
+  createVersion: async (productId, data) => {
+    if (useNativeBridge) {
+      const result = await nativeRequest('CreateProductVersion', productId, JSON.stringify(data));
+      if (result && result.error) {
+        throw new Error(result.error);
+      }
+      return typeof result === 'string' ? JSON.parse(result) : result;
+    }
+    const result = await httpRequest(`products/${productId}/versions`, { method: 'POST', body: data });
+    if (result && result.error) {
+      throw new Error(result.error);
+    }
+    return result;
+  },
+
+  updateVersion: async (id, data) => {
+    if (useNativeBridge) {
+      const result = await nativeRequest('UpdateProductVersion', id, JSON.stringify(data));
+      if (result && result.error) {
+        throw new Error(result.error);
+      }
+      return typeof result === 'string' ? JSON.parse(result) : result;
+    }
+    const result = await httpRequest(`products/versions/${id}`, { method: 'PUT', body: data });
+    if (result && result.error) {
+      throw new Error(result.error);
+    }
+    return result;
+  },
+
+  deleteVersion: async (id) => {
+    if (useNativeBridge) {
+      const result = await nativeRequest('DeleteProductVersion', id);
+      if (result && result.error) {
+        throw new Error(result.error);
+      }
+      return typeof result === 'string' ? JSON.parse(result) : result;
+    }
+    const result = await httpRequest(`products/versions/${id}`, { method: 'DELETE' });
+    if (result && result.error) {
+      throw new Error(result.error);
+    }
+    return result;
   },
   
   getAnalytics: async () => {
@@ -1282,5 +1340,123 @@ export const productsApi = {
       throw new Error(result.error);
     }
     return result;
+  },
+};
+
+// 报告 API
+export const reportsApi = {
+  getPersonReport: async (personName, startDate, endDate) => {
+    if (useNativeBridge) {
+      const reportData = JSON.stringify({ personName, startDate, endDate });
+      const result = await nativeRequest('GetPersonReport', reportData);
+      if (result && result.error) {
+        throw new Error(result.error);
+      }
+      return typeof result === 'string' ? JSON.parse(result) : result;
+    }
+    const result = await httpRequest('reports/person-report', {
+      method: 'POST',
+      body: { personName, startDate, endDate }
+    });
+    if (result && result.error) {
+      throw new Error(result.error);
+    }
+    return result;
+  },
+
+  getEngineerReport: async (engineerId, startDate, endDate) => {
+    if (useNativeBridge) {
+      const reportData = JSON.stringify({ engineerId, startDate, endDate });
+      const result = await nativeRequest('GetEngineerReport', reportData);
+      if (result && result.error) {
+        throw new Error(result.error);
+      }
+      return typeof result === 'string' ? JSON.parse(result) : result;
+    }
+    const result = await httpRequest('reports/engineer-report', {
+      method: 'POST',
+      body: { engineerId, startDate, endDate }
+    });
+    if (result && result.error) {
+      throw new Error(result.error);
+    }
+    return result;
+  },
+};
+
+// 相关方 API
+export const stakeholdersApi = {
+  getAll: async () => {
+    if (useNativeBridge) {
+      const result = await nativeRequest('GetStakeholders');
+      if (result && result.error) {
+        throw new Error(result.error);
+      }
+      // 处理返回的数据格式
+      let data = typeof result === 'string' ? JSON.parse(result) : result;
+      // 如果返回的是包装对象，提取实际数据
+      if (data && !Array.isArray(data)) {
+        if (Array.isArray(data.value)) {
+          data = data.value;
+        } else if (Array.isArray(data.result)) {
+          data = data.result;
+        }
+      }
+      return Array.isArray(data) ? data : [];
+    }
+    const result = await httpRequest('stakeholders', { method: 'GET' });
+    if (result && result.error) {
+      throw new Error(result.error);
+    }
+    return Array.isArray(result) ? result : [];
+  },
+};
+
+// 通用 API 对象（用于直接 HTTP 请求）
+export const api = {
+  get: async (endpoint) => {
+    const url = `${API_BASE_URL}${endpoint}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    return response;
+  },
+  
+  post: async (endpoint, data) => {
+    const url = `${API_BASE_URL}${endpoint}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+    return response;
+  },
+  
+  put: async (endpoint, data) => {
+    const url = `${API_BASE_URL}${endpoint}`;
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+    return response;
+  },
+  
+  delete: async (endpoint) => {
+    const url = `${API_BASE_URL}${endpoint}`;
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    return response;
   },
 };

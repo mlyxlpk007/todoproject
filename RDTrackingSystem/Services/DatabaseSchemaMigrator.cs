@@ -33,6 +33,11 @@ public static class DatabaseSchemaMigrator
             {
                 connection.Open();
                 
+                // 启用外键约束
+                var pragmaCommand = connection.CreateCommand();
+                pragmaCommand.CommandText = "PRAGMA foreign_keys = ON;";
+                pragmaCommand.ExecuteNonQuery();
+                
                 // 迁移 Users 表
                 MigrateUsersTable(connection, logger);
                 
@@ -71,6 +76,16 @@ public static class DatabaseSchemaMigrator
                 CreateProductFunctionCustomersTableIfNotExists(connection, logger);
                 CreateProductFunctionTasksTableIfNotExists(connection, logger);
                 CreateProductVersionsTableIfNotExists(connection, logger);
+                
+                // 创建成本管理相关表（如果不存在）
+                CreateProductCostsTableIfNotExists(connection, logger);
+                CreateBomItemsTableIfNotExists(connection, logger);
+                CreateLaborCostsTableIfNotExists(connection, logger);
+                CreateManufacturingCostsTableIfNotExists(connection, logger);
+                CreateProductPricingsTableIfNotExists(connection, logger);
+                
+                // 创建相关方表（如果不存在）
+                CreateStakeholdersTableIfNotExists(connection, logger);
                 
                 logger.LogInfo("数据库架构迁移完成", "DatabaseSchemaMigrator");
             }
@@ -923,6 +938,262 @@ public static class DatabaseSchemaMigrator
         catch (Exception ex)
         {
             logger.LogError($"创建 ProductVersions 表失败: {ex.Message}", ex, "DatabaseSchemaMigrator");
+        }
+    }
+    
+    private static void CreateProductCostsTableIfNotExists(SqliteConnection connection, FileLogger logger)
+    {
+        try
+        {
+            if (TableExists(connection, "ProductCosts"))
+            {
+                logger.LogInfo("ProductCosts 表已存在，跳过创建", "DatabaseSchemaMigrator");
+                return;
+            }
+            
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                CREATE TABLE IF NOT EXISTS [ProductCosts] (
+                    [Id] TEXT NOT NULL PRIMARY KEY,
+                    [ProductId] TEXT NOT NULL,
+                    [ProductVersionId] TEXT,
+                    [ProjectId] TEXT,
+                    [Specification] TEXT,
+                    [Status] TEXT NOT NULL DEFAULT 'draft',
+                    [Notes] TEXT,
+                    [CreatedAt] TEXT NOT NULL DEFAULT (datetime('now')),
+                    [UpdatedAt] TEXT NOT NULL DEFAULT (datetime('now')),
+                    FOREIGN KEY([ProductId]) REFERENCES [Products]([Id]) ON DELETE CASCADE,
+                    FOREIGN KEY([ProductVersionId]) REFERENCES [ProductVersions]([Id]) ON DELETE SET NULL
+                );
+                
+                CREATE INDEX IF NOT EXISTS [IX_ProductCosts_ProductId] ON [ProductCosts]([ProductId]);
+                CREATE INDEX IF NOT EXISTS [IX_ProductCosts_ProductVersionId] ON [ProductCosts]([ProductVersionId]);
+                CREATE INDEX IF NOT EXISTS [IX_ProductCosts_ProjectId] ON [ProductCosts]([ProjectId]);
+                CREATE INDEX IF NOT EXISTS [IX_ProductCosts_Status] ON [ProductCosts]([Status]);
+            ";
+            
+            command.ExecuteNonQuery();
+            logger.LogInfo("ProductCosts 表创建成功", "DatabaseSchemaMigrator");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"创建 ProductCosts 表失败: {ex.Message}", ex, "DatabaseSchemaMigrator");
+        }
+    }
+    
+    private static void CreateBomItemsTableIfNotExists(SqliteConnection connection, FileLogger logger)
+    {
+        try
+        {
+            if (TableExists(connection, "BomItems"))
+            {
+                logger.LogInfo("BomItems 表已存在，跳过创建", "DatabaseSchemaMigrator");
+                return;
+            }
+            
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                CREATE TABLE IF NOT EXISTS [BomItems] (
+                    [Id] TEXT NOT NULL PRIMARY KEY,
+                    [ProductCostId] TEXT NOT NULL,
+                    [MaterialName] TEXT NOT NULL,
+                    [MaterialCode] TEXT,
+                    [MaterialType] TEXT,
+                    [Unit] TEXT NOT NULL DEFAULT 'pcs',
+                    [Quantity] REAL NOT NULL DEFAULT 1,
+                    [UnitPrice] REAL NOT NULL DEFAULT 0,
+                    [TotalPrice] REAL NOT NULL DEFAULT 0,
+                    [Supplier] TEXT,
+                    [Category] TEXT,
+                    [Notes] TEXT,
+                    [OrderIndex] INTEGER NOT NULL DEFAULT 0,
+                    [CreatedAt] TEXT NOT NULL DEFAULT (datetime('now')),
+                    [UpdatedAt] TEXT NOT NULL DEFAULT (datetime('now')),
+                    FOREIGN KEY([ProductCostId]) REFERENCES [ProductCosts]([Id]) ON DELETE CASCADE
+                );
+                
+                CREATE INDEX IF NOT EXISTS [IX_BomItems_ProductCostId] ON [BomItems]([ProductCostId]);
+                CREATE INDEX IF NOT EXISTS [IX_BomItems_MaterialType] ON [BomItems]([MaterialType]);
+                CREATE INDEX IF NOT EXISTS [IX_BomItems_Category] ON [BomItems]([Category]);
+            ";
+            
+            command.ExecuteNonQuery();
+            logger.LogInfo("BomItems 表创建成功", "DatabaseSchemaMigrator");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"创建 BomItems 表失败: {ex.Message}", ex, "DatabaseSchemaMigrator");
+        }
+    }
+    
+    private static void CreateLaborCostsTableIfNotExists(SqliteConnection connection, FileLogger logger)
+    {
+        try
+        {
+            if (TableExists(connection, "LaborCosts"))
+            {
+                logger.LogInfo("LaborCosts 表已存在，跳过创建", "DatabaseSchemaMigrator");
+                return;
+            }
+            
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                CREATE TABLE IF NOT EXISTS [LaborCosts] (
+                    [Id] TEXT NOT NULL PRIMARY KEY,
+                    [ProductCostId] TEXT NOT NULL,
+                    [TaskId] TEXT,
+                    [ProjectId] TEXT,
+                    [AssetId] TEXT,
+                    [EngineerId] TEXT,
+                    [EngineerName] TEXT,
+                    [WorkDescription] TEXT,
+                    [Role] TEXT,
+                    [Hours] REAL NOT NULL DEFAULT 0,
+                    [HourlyRate] REAL NOT NULL DEFAULT 0,
+                    [TotalCost] REAL NOT NULL DEFAULT 0,
+                    [WorkDate] TEXT,
+                    [Notes] TEXT,
+                    [CreatedAt] TEXT NOT NULL DEFAULT (datetime('now')),
+                    [UpdatedAt] TEXT NOT NULL DEFAULT (datetime('now')),
+                    FOREIGN KEY([ProductCostId]) REFERENCES [ProductCosts]([Id]) ON DELETE CASCADE
+                );
+                
+                CREATE INDEX IF NOT EXISTS [IX_LaborCosts_ProductCostId] ON [LaborCosts]([ProductCostId]);
+                CREATE INDEX IF NOT EXISTS [IX_LaborCosts_TaskId] ON [LaborCosts]([TaskId]);
+                CREATE INDEX IF NOT EXISTS [IX_LaborCosts_ProjectId] ON [LaborCosts]([ProjectId]);
+                CREATE INDEX IF NOT EXISTS [IX_LaborCosts_AssetId] ON [LaborCosts]([AssetId]);
+                CREATE INDEX IF NOT EXISTS [IX_LaborCosts_EngineerId] ON [LaborCosts]([EngineerId]);
+            ";
+            
+            command.ExecuteNonQuery();
+            logger.LogInfo("LaborCosts 表创建成功", "DatabaseSchemaMigrator");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"创建 LaborCosts 表失败: {ex.Message}", ex, "DatabaseSchemaMigrator");
+        }
+    }
+    
+    private static void CreateManufacturingCostsTableIfNotExists(SqliteConnection connection, FileLogger logger)
+    {
+        try
+        {
+            if (TableExists(connection, "ManufacturingCosts"))
+            {
+                logger.LogInfo("ManufacturingCosts 表已存在，跳过创建", "DatabaseSchemaMigrator");
+                return;
+            }
+            
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                CREATE TABLE IF NOT EXISTS [ManufacturingCosts] (
+                    [Id] TEXT NOT NULL PRIMARY KEY,
+                    [ProductCostId] TEXT NOT NULL,
+                    [CostName] TEXT NOT NULL,
+                    [CostType] TEXT,
+                    [Unit] TEXT NOT NULL DEFAULT 'pcs',
+                    [Quantity] REAL NOT NULL DEFAULT 1,
+                    [UnitCost] REAL NOT NULL DEFAULT 0,
+                    [TotalCost] REAL NOT NULL DEFAULT 0,
+                    [Coefficient] REAL NOT NULL DEFAULT 1.0,
+                    [Supplier] TEXT,
+                    [Notes] TEXT,
+                    [OrderIndex] INTEGER NOT NULL DEFAULT 0,
+                    [CreatedAt] TEXT NOT NULL DEFAULT (datetime('now')),
+                    [UpdatedAt] TEXT NOT NULL DEFAULT (datetime('now')),
+                    FOREIGN KEY([ProductCostId]) REFERENCES [ProductCosts]([Id]) ON DELETE CASCADE
+                );
+                
+                CREATE INDEX IF NOT EXISTS [IX_ManufacturingCosts_ProductCostId] ON [ManufacturingCosts]([ProductCostId]);
+                CREATE INDEX IF NOT EXISTS [IX_ManufacturingCosts_CostType] ON [ManufacturingCosts]([CostType]);
+            ";
+            
+            command.ExecuteNonQuery();
+            logger.LogInfo("ManufacturingCosts 表创建成功", "DatabaseSchemaMigrator");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"创建 ManufacturingCosts 表失败: {ex.Message}", ex, "DatabaseSchemaMigrator");
+        }
+    }
+    
+    private static void CreateProductPricingsTableIfNotExists(SqliteConnection connection, FileLogger logger)
+    {
+        try
+        {
+            if (TableExists(connection, "ProductPricing"))
+            {
+                logger.LogInfo("ProductPricing 表已存在，跳过创建", "DatabaseSchemaMigrator");
+                return;
+            }
+            
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                CREATE TABLE IF NOT EXISTS [ProductPricing] (
+                    [Id] TEXT NOT NULL PRIMARY KEY,
+                    [ProductCostId] TEXT NOT NULL,
+                    [SellingPrice] REAL NOT NULL DEFAULT 0,
+                    [MinPrice] REAL,
+                    [MaxPrice] REAL,
+                    [ProfitMargin] REAL,
+                    [Currency] TEXT NOT NULL DEFAULT 'CNY',
+                    [Market] TEXT,
+                    [Notes] TEXT,
+                    [EffectiveDate] TEXT NOT NULL DEFAULT (datetime('now')),
+                    [ExpiryDate] TEXT,
+                    [CreatedAt] TEXT NOT NULL DEFAULT (datetime('now')),
+                    [UpdatedAt] TEXT NOT NULL DEFAULT (datetime('now')),
+                    FOREIGN KEY([ProductCostId]) REFERENCES [ProductCosts]([Id]) ON DELETE CASCADE
+                );
+                
+                CREATE INDEX IF NOT EXISTS [IX_ProductPricings_ProductCostId] ON [ProductPricing]([ProductCostId]);
+                CREATE INDEX IF NOT EXISTS [IX_ProductPricings_Market] ON [ProductPricing]([Market]);
+            ";
+            
+            command.ExecuteNonQuery();
+            logger.LogInfo("ProductPricing 表创建成功", "DatabaseSchemaMigrator");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"创建 ProductPricing 表失败: {ex.Message}", ex, "DatabaseSchemaMigrator");
+        }
+    }
+    
+    private static void CreateStakeholdersTableIfNotExists(SqliteConnection connection, FileLogger logger)
+    {
+        try
+        {
+            if (TableExists(connection, "Stakeholders"))
+            {
+                logger.LogInfo("Stakeholders 表已存在，跳过创建", "DatabaseSchemaMigrator");
+                return;
+            }
+            
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                CREATE TABLE IF NOT EXISTS [Stakeholders] (
+                    [Id] TEXT NOT NULL PRIMARY KEY,
+                    [Name] TEXT NOT NULL,
+                    [Type] TEXT NOT NULL DEFAULT 'stakeholder',
+                    [Email] TEXT,
+                    [Phone] TEXT,
+                    [Company] TEXT,
+                    [Notes] TEXT,
+                    [CreatedAt] TEXT NOT NULL DEFAULT (datetime('now')),
+                    [UpdatedAt] TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+                
+                CREATE INDEX IF NOT EXISTS [IX_Stakeholders_Name] ON [Stakeholders]([Name]);
+                CREATE INDEX IF NOT EXISTS [IX_Stakeholders_Type] ON [Stakeholders]([Type]);
+            ";
+            
+            command.ExecuteNonQuery();
+            logger.LogInfo("Stakeholders 表创建成功", "DatabaseSchemaMigrator");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"创建 Stakeholders 表失败: {ex.Message}", ex, "DatabaseSchemaMigrator");
         }
     }
 }

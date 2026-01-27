@@ -158,7 +158,7 @@ public partial class MainForm : Form, IMessageFilter
             // Block F12
             if (keyCode == Keys.F12)
             {
-                return (IntPtr)1; // Block F12
+              //  return (IntPtr)1; // Block F12
             }
         }
 
@@ -212,7 +212,7 @@ public partial class MainForm : Form, IMessageFilter
             // Block F12 key (disable developer tools)
             if (keyCode == Keys.F12)
             {
-                return true; // Block F12
+             //   return true; // Block F12
             }
         }
 
@@ -249,7 +249,7 @@ public partial class MainForm : Form, IMessageFilter
 
         // 设置 WebView2 选项
         // 禁用鼠标手势功能，防止拖动时关闭弹窗
-        _webView.CoreWebView2.Settings.IsSwipeNavigationEnabled = false;
+     /*   _webView.CoreWebView2.Settings.IsSwipeNavigationEnabled = false;
         _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false;
         
         _webView.CoreWebView2.Settings.IsZoomControlEnabled = true;
@@ -261,9 +261,9 @@ public partial class MainForm : Form, IMessageFilter
         _webView.CoreWebView2.Settings.AreHostObjectsAllowed = true;
 
         // 2. Completely disable F12 developer tools
-        _webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+      //  _webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
         // 禁用缓存以确保加载最新文件
-        _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false;
+        _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false;*/
 
         // 创建桥接对象并注入到 JavaScript（仅在数据库连接成功时）
         if (_context != null)

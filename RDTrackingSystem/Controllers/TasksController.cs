@@ -213,6 +213,12 @@ public class TasksController : ControllerBase
                 await _context.SaveChangesAsync();
             }
 
+            // 自动保存相关方（利益方）
+            if (!string.IsNullOrWhiteSpace(task.Stakeholder))
+            {
+                await StakeholderService.SaveStakeholderAsync(_context, task.Stakeholder, "stakeholder");
+            }
+
             return Ok(new { id = task.Id, message = "任务创建成功" });
         }
         catch (Exception ex)
@@ -277,6 +283,13 @@ public class TasksController : ControllerBase
             task.UpdatedAt = DateTime.Now;
 
             await _context.SaveChangesAsync();
+            
+            // 自动保存相关方（利益方）
+            if (!string.IsNullOrWhiteSpace(task.Stakeholder))
+            {
+                await StakeholderService.SaveStakeholderAsync(_context, task.Stakeholder, "stakeholder");
+            }
+            
             return Ok(new { message = "任务更新成功" });
         }
         catch (Exception ex)

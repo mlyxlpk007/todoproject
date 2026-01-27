@@ -4,7 +4,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { Plus, Bell, Edit, Check, ChevronsUpDown, X, Eye, AlertCircle, User, Calendar, FileText, CheckCircle2, Tag, Archive, Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { tasksApi, projectsApi, usersApi, assetsApi } from '@/lib/api';
 import { format } from 'date-fns';
@@ -596,6 +596,8 @@ const TaskModal = ({ isOpen, onClose, onSubmit, editingTask, projects, users }) 
     const [open, setOpen] = useState(false);
 
     useEffect(() => {
+        console.log('[TaskModal] 组件渲染，users:', users);
+        console.log('[TaskModal] users 类型:', typeof users, '是否为数组:', Array.isArray(users), '长度:', users?.length);
         if (editingTask) {
             setFormData({
                 ...editingTask,
@@ -606,7 +608,7 @@ const TaskModal = ({ isOpen, onClose, onSubmit, editingTask, projects, users }) 
         } else {
              setFormData({ name: '', projectId: '', assignedTo: [], startDate: today, endDate: today, requirements: '', stakeholder: '', priority: 'medium', taskType: 'project' });
         }
-    }, [editingTask, today]);
+    }, [editingTask, today, users]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -639,29 +641,62 @@ const TaskModal = ({ isOpen, onClose, onSubmit, editingTask, projects, users }) 
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="form-group"><label>任务名称</label><input type="text" name="name" value={formData.name} onChange={handleChange} className="form-input" required /></div>
                 <div className="form-group"><label>所属项目</label><select name="projectId" value={formData.projectId} onChange={handleChange} className="form-select"><option value="">选择项目</option>{projects.map(p => <option key={p.id} value={p.id}>{p.projectName}</option>)}</select></div>
-                <div className="form-group"><label>指派给</label>
-                    <Popover open={open} onOpenChange={setOpen}>
-                        <PopoverTrigger asChild>
-                            <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between">
-                                <span className="truncate">{selectedUsers || "选择工程师..."}</span>
-                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                            <Command>
-                                <CommandInput placeholder="搜索工程师..." />
-                                <CommandEmpty>没有找到工程师</CommandEmpty>
-                                <CommandGroup>
-                                    {users.map((user) => (
-                                        <CommandItem key={user.id} onSelect={() => handleMultiSelect(user.id)}>
-                                            <Check className={cn("mr-2 h-4 w-4", formData.assignedTo.includes(user.id) ? "opacity-100" : "opacity-0")} />
-                                            {user.name}
-                                        </CommandItem>
-                                    ))}
-                                </CommandGroup>
-                            </Command>
-                        </PopoverContent>
-                    </Popover>
+                <div className="form-group">
+                    <label>指派给</label>
+                    {console.log('[TaskModal] 渲染时 users:', users, '长度:', users?.length)}
+                    {!users || users.length === 0 ? (
+                        <div className="text-sm text-yellow-400 p-2 bg-yellow-500/10 rounded">
+                            正在加载工程师列表...
+                        </div>
+                    ) : (
+                        <Popover open={open} onOpenChange={(newOpen) => {
+                            console.log('[TaskModal] Popover 状态变化:', newOpen);
+                            setOpen(newOpen);
+                        }}>
+                            <PopoverTrigger asChild>
+                                <Button 
+                                    variant="outline" 
+                                    role="combobox" 
+                                    aria-expanded={open} 
+                                    className="w-full justify-between"
+                                >
+                                    <span className="truncate">{selectedUsers || "选择工程师..."}</span>
+                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent 
+                                className="w-[var(--radix-popover-trigger-width)] p-0 z-[10000]" 
+                                align="start"
+                                style={{ zIndex: 10000 }}
+                            >
+                                <Command>
+                                    <CommandInput placeholder="搜索工程师..." />
+                                    <CommandList>
+                                        <CommandEmpty>没有找到工程师</CommandEmpty>
+                                        <CommandGroup>
+                                            {users && users.length > 0 ? (
+                                                users.map((user) => (
+                                                    <CommandItem 
+                                                        key={user.id} 
+                                                        value={user.name || user.id}
+                                                        onSelect={() => {
+                                                            console.log('[TaskModal] 选择工程师:', user.id, user.name);
+                                                            handleMultiSelect(user.id);
+                                                        }}
+                                                    >
+                                                        <Check className={cn("mr-2 h-4 w-4", formData.assignedTo.includes(user.id) ? "opacity-100" : "opacity-0")} />
+                                                        {user.name || user.id}
+                                                    </CommandItem>
+                                                ))
+                                            ) : (
+                                                <CommandEmpty>暂无工程师</CommandEmpty>
+                                            )}
+                                        </CommandGroup>
+                                    </CommandList>
+                                </Command>
+                            </PopoverContent>
+                        </Popover>
+                    )}
                 </div>
                 <div className="form-group">
                     <label>任务要求/工作内容</label>

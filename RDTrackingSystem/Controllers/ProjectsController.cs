@@ -304,6 +304,12 @@ public class ProjectsController : ControllerBase
             var changeCount = await _context.SaveChangesAsync();
             Console.WriteLine($"[ProjectsController] CreateProject() 保存成功，影响行数: {changeCount}");
 
+            // 自动保存相关方（销售）
+            if (!string.IsNullOrWhiteSpace(project.SalesName))
+            {
+                await StakeholderService.SaveStakeholderAsync(_context, project.SalesName, "sales");
+            }
+
             _logger.LogInformation("项目创建成功: ID={ProjectId}, OrderNumber={OrderNumber}", project.Id, project.OrderNumber);
             return Ok(new { id = project.Id, message = "项目创建成功" });
         }
@@ -465,6 +471,13 @@ public class ProjectsController : ControllerBase
             project.UpdatedAt = DateTime.Now;
 
             await _context.SaveChangesAsync();
+            
+            // 自动保存相关方（销售）
+            if (!string.IsNullOrWhiteSpace(project.SalesName))
+            {
+                await StakeholderService.SaveStakeholderAsync(_context, project.SalesName, "sales");
+            }
+            
             return Ok(new { message = "项目更新成功" });
         }
         catch (Exception ex)

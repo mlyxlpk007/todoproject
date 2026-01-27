@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useToast } from '@/components/ui/use-toast';
-import { Package, LayoutGrid, Folder, Users as UsersIcon, User, Settings, BarChart2, Bell, Database, ListChecks, BookOpen, Archive, Sparkles, ShoppingBag } from 'lucide-react';
+import { Package, LayoutGrid, Folder, Users as UsersIcon, User, Settings, BarChart2, Bell, Database, ListChecks, BookOpen, Archive, Sparkles, ShoppingBag, DollarSign, FileText } from 'lucide-react';
 import NotificationCenter from './NotificationCenter';
 import SettingsModal from './SettingsModal';
 import { useI18n } from '@/i18n/I18nContext';
@@ -70,6 +70,7 @@ const Sidebar = () => {
     { icon: Folder, label: t('nav.projects'), path: '/projects' },
     { icon: ListChecks, label: t('nav.tasks'), path: '/tasks' },
     { icon: ShoppingBag, label: t('nav.productManagement'), path: '/products' },
+    { icon: DollarSign, label: t('nav.costManagement'), path: '/cost-management' },
     { icon: Archive, label: t('nav.assetManagement'), path: '/assets' },
     { icon: UsersIcon, label: t('nav.humanResources'), path: '/human-resources' },
     { icon: BookOpen, label: t('nav.lessonLearned'), path: '/lesson-learned' },
@@ -80,7 +81,7 @@ const Sidebar = () => {
   ];
 
   const reportItems = [
-    { icon: BarChart2, label: t('nav.reports'), action: showToast },
+    { icon: BarChart2, label: t('nav.reports'), path: '/reports' },
     { icon: Settings, label: t('nav.settings'), action: () => setIsSettingsOpen(true) },
   ];
 
@@ -115,8 +116,8 @@ const Sidebar = () => {
       <div className="mt-auto">
         <ul>
           {reportItems.map(item => (
-            <li key={item.label} onClick={item.action}
-              className="flex items-center gap-3 px-4 py-2.5 rounded-lg mb-2 cursor-pointer transition-colors hover:bg-gray-800">
+            <li key={item.label} onClick={() => handleNavClick(item)}
+              className={`flex items-center gap-3 px-4 py-2.5 rounded-lg mb-2 cursor-pointer transition-colors ${location.pathname === item.path ? 'bg-indigo-600/20 text-indigo-300' : 'hover:bg-gray-800'}`}>
               <item.icon size={20} />
               <span>{item.label}</span>
             </li>

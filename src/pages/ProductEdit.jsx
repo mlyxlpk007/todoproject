@@ -5,7 +5,7 @@ import { useI18n } from '@/i18n/I18nContext';
 import { useToast } from '@/components/ui/use-toast';
 import {
   ArrowLeft, Plus, Edit, Trash2, Save, X, Package, Layers, Zap, Wrench,
-  Archive, User, MapPin, Briefcase, ChevronRight, ChevronDown
+  Archive, User, MapPin, Briefcase, ChevronRight, ChevronDown, Tag, Calendar, GitCompare
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { productsApi, assetsApi, usersApi, tasksApi } from '@/lib/api';
@@ -20,6 +20,12 @@ const ProductEdit = () => {
   const [expandedModules, setExpandedModules] = useState(new Set());
   const [expandedSubModules, setExpandedSubModules] = useState(new Set());
   const [expandedFunctions, setExpandedFunctions] = useState(new Set());
+  
+  // 版本相关状态
+  const [selectedVersion, setSelectedVersion] = useState(null);
+  const [showVersionCompare, setShowVersionCompare] = useState(false);
+  const [compareVersion1, setCompareVersion1] = useState(null);
+  const [compareVersion2, setCompareVersion2] = useState(null);
   
   // 模态框状态
   const [showModuleModal, setShowModuleModal] = useState(false);
@@ -55,6 +61,8 @@ const ProductEdit = () => {
     try {
       setLoading(true);
       const data = await productsApi.getById(id);
+      console.log('[ProductEdit] 加载的产品数据:', data);
+      console.log('[ProductEdit] currentVersion:', data?.currentVersion);
       setProduct(data);
       // 默认展开所有模块
       if (data?.modules) {
@@ -324,6 +332,10 @@ const ProductEdit = () => {
     );
   }
 
+  // 调试信息
+  console.log('[ProductEdit] 渲染时 product 对象:', product);
+  console.log('[ProductEdit] 渲染时 currentVersion:', product?.currentVersion);
+
   return (
     <div className="h-full overflow-y-auto p-6">
       <div className="max-w-7xl mx-auto">
@@ -358,20 +370,100 @@ const ProductEdit = () => {
           animate={{ opacity: 1, y: 0 }}
           className="bg-gray-800/50 rounded-lg p-4 border border-gray-700 mb-6"
         >
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div>
               <span className="text-sm text-gray-400">{t('productManagement.productCode')}:</span>
               <p className="text-white">{product.code}</p>
             </div>
             <div>
               <span className="text-sm text-gray-400">{t('productManagement.currentVersion')}:</span>
-              <p className="text-white">{product.currentVersion || '-'}</p>
+              <p className="text-white" data-testid="product-current-version">
+                {product?.currentVersion || '-'}
+              </p>
             </div>
             <div>
               <span className="text-sm text-gray-400">{t('productManagement.status')}:</span>
               <p className="text-white">{product.status}</p>
             </div>
           </div>
+          
+          {/* 版本列表 */}
+          {product.versions && product.versions.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-700">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
+                  <Tag className="w-4 h-4" />
+                  产品版本列表 ({product.versions.length})
+                </h3>
+                {product.versions.length >= 2 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowVersionCompare(true)}
+                    className="border-gray-600 hover:bg-gray-700 text-white"
+                  >
+                    <GitCompare className="w-4 h-4 mr-2" />
+                    版本对比
+                  </Button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {product.versions.map((version) => (
+                  <div
+                    key={version.id}
+                    className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                      selectedVersion?.id === version.id
+                        ? 'bg-indigo-600/20 border-indigo-500'
+                        : 'bg-gray-700/30 border-gray-600 hover:border-gray-500'
+                    }`}
+                    onClick={() => setSelectedVersion(selectedVersion?.id === version.id ? null : version)}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Tag className={`w-4 h-4 ${
+                          version.status === 'stable' ? 'text-green-400' :
+                          version.status === 'beta' ? 'text-yellow-400' :
+                          'text-gray-400'
+                        }`} />
+                        <span className="font-semibold text-white">{version.version}</span>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-xs ${
+                        version.status === 'stable' ? 'bg-green-500/20 text-green-400' :
+                        version.status === 'beta' ? 'bg-yellow-500/20 text-yellow-400' :
+                        'bg-gray-500/20 text-gray-400'
+                      }`}>
+                        {version.status || 'draft'}
+                      </span>
+                    </div>
+                    {version.description && (
+                      <p className="text-xs text-gray-400 mb-2 line-clamp-2">{version.description}</p>
+                    )}
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      {version.releaseDate && (
+                        <div className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          <span>{version.releaseDate}</span>
+                        </div>
+                      )}
+                      <span className="text-gray-600">·</span>
+                      <span>{new Date(version.createdAt).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {selectedVersion && (
+                <div className="mt-3 p-3 bg-indigo-600/10 border border-indigo-500/30 rounded-lg">
+                  <p className="text-sm text-indigo-300">
+                    已选择版本: <span className="font-semibold">{selectedVersion.version}</span>
+                    {selectedVersion.description && ` - ${selectedVersion.description}`}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    注意：当前版本结构快照功能尚未实现，显示的是当前产品结构
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </motion.div>
 
         {/* 模块列表 */}
@@ -708,6 +800,24 @@ const ProductEdit = () => {
             assets={assets}
             users={users}
             tasks={tasks}
+          />
+        )}
+
+        {/* 版本对比模态框 */}
+        {showVersionCompare && (
+          <VersionCompareModal
+            isOpen={showVersionCompare}
+            onClose={() => {
+              setShowVersionCompare(false);
+              setCompareVersion1(null);
+              setCompareVersion2(null);
+            }}
+            versions={product.versions || []}
+            productStructure={product}
+            onSelectVersion1={(version) => setCompareVersion1(version)}
+            onSelectVersion2={(version) => setCompareVersion2(version)}
+            compareVersion1={compareVersion1}
+            compareVersion2={compareVersion2}
           />
         )}
       </div>
@@ -1188,6 +1298,244 @@ const RelationModal = ({ isOpen, onClose, onSubmit, relationType, assets, users,
               </Button>
             </div>
           </form>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
+// 版本对比模态框组件
+const VersionCompareModal = ({ 
+  isOpen, 
+  onClose, 
+  versions, 
+  productStructure,
+  onSelectVersion1,
+  onSelectVersion2,
+  compareVersion1,
+  compareVersion2
+}) => {
+  const { t } = useI18n();
+
+  if (!isOpen) return null;
+
+  // 计算结构差异（目前只显示当前结构，因为历史版本没有快照）
+  const getStructureStats = (structure) => {
+    if (!structure) return { modules: 0, subModules: 0, functions: 0 };
+    const modules = structure.modules || [];
+    const subModules = modules.flatMap(m => m.subModules || []);
+    const functions = subModules.flatMap(sm => sm.functions || []);
+    return {
+      modules: modules.length,
+      subModules: subModules.length,
+      functions: functions.length
+    };
+  };
+
+  const currentStats = getStructureStats(productStructure);
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ scale: 0.9 }}
+          animate={{ scale: 1 }}
+          exit={{ scale: 0.9 }}
+          className="bg-gray-800 border border-gray-700 rounded-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between p-6 border-b border-gray-700 sticky top-0 bg-gray-800 z-10">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <GitCompare className="w-5 h-5 text-indigo-400" />
+              版本对比
+            </h2>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-full hover:bg-gray-700 transition-colors"
+            >
+              <X size={20} className="text-gray-400" />
+            </button>
+          </div>
+
+          <div className="p-6">
+            {/* 版本选择 */}
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  选择版本 1
+                </label>
+                <select
+                  value={compareVersion1?.id || ''}
+                  onChange={(e) => {
+                    const version = versions.find(v => v.id === e.target.value);
+                    onSelectVersion1(version || null);
+                  }}
+                  className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                >
+                  <option value="">选择版本...</option>
+                  {versions.map(v => (
+                    <option key={v.id} value={v.id}>
+                      {v.version} ({v.status}) - {v.releaseDate || '未发布'}
+                    </option>
+                  ))}
+                </select>
+                {compareVersion1 && (
+                  <div className="mt-2 p-3 bg-gray-700/50 rounded-lg">
+                    <p className="text-sm text-white font-semibold">{compareVersion1.version}</p>
+                    {compareVersion1.description && (
+                      <p className="text-xs text-gray-400 mt-1">{compareVersion1.description}</p>
+                    )}
+                    <p className="text-xs text-gray-500 mt-2">
+                      {compareVersion1.releaseDate && `发布日期: ${compareVersion1.releaseDate}`}
+                      {compareVersion1.releaseDate && ' · '}
+                      创建时间: {new Date(compareVersion1.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  选择版本 2
+                </label>
+                <select
+                  value={compareVersion2?.id || ''}
+                  onChange={(e) => {
+                    const version = versions.find(v => v.id === e.target.value);
+                    onSelectVersion2(version || null);
+                  }}
+                  className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                >
+                  <option value="">选择版本...</option>
+                  {versions.map(v => (
+                    <option key={v.id} value={v.id}>
+                      {v.version} ({v.status}) - {v.releaseDate || '未发布'}
+                    </option>
+                  ))}
+                </select>
+                {compareVersion2 && (
+                  <div className="mt-2 p-3 bg-gray-700/50 rounded-lg">
+                    <p className="text-sm text-white font-semibold">{compareVersion2.version}</p>
+                    {compareVersion2.description && (
+                      <p className="text-xs text-gray-400 mt-1">{compareVersion2.description}</p>
+                    )}
+                    <p className="text-xs text-gray-500 mt-2">
+                      {compareVersion2.releaseDate && `发布日期: ${compareVersion2.releaseDate}`}
+                      {compareVersion2.releaseDate && ' · '}
+                      创建时间: {new Date(compareVersion2.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 对比结果 */}
+            {compareVersion1 && compareVersion2 && (
+              <div className="space-y-4">
+                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
+                  <p className="text-sm text-yellow-300">
+                    ⚠️ 注意：版本结构快照功能尚未实现。当前显示的是产品当前结构，无法显示历史版本的结构差异。
+                  </p>
+                </div>
+
+                {/* 版本信息对比 */}
+                <div className="bg-gray-700/30 rounded-lg p-4">
+                  <h3 className="text-lg font-semibold text-white mb-4">版本信息对比</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-300 mb-2">{compareVersion1.version}</h4>
+                      <div className="space-y-2 text-sm">
+                        <div>
+                          <span className="text-gray-400">状态:</span>
+                          <span className={`ml-2 px-2 py-0.5 rounded text-xs ${
+                            compareVersion1.status === 'stable' ? 'bg-green-500/20 text-green-400' :
+                            compareVersion1.status === 'beta' ? 'bg-yellow-500/20 text-yellow-400' :
+                            'bg-gray-500/20 text-gray-400'
+                          }`}>
+                            {compareVersion1.status}
+                          </span>
+                        </div>
+                        {compareVersion1.description && (
+                          <div>
+                            <span className="text-gray-400">描述:</span>
+                            <p className="text-white mt-1">{compareVersion1.description}</p>
+                          </div>
+                        )}
+                        {compareVersion1.releaseDate && (
+                          <div>
+                            <span className="text-gray-400">发布日期:</span>
+                            <span className="text-white ml-2">{compareVersion1.releaseDate}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-300 mb-2">{compareVersion2.version}</h4>
+                      <div className="space-y-2 text-sm">
+                        <div>
+                          <span className="text-gray-400">状态:</span>
+                          <span className={`ml-2 px-2 py-0.5 rounded text-xs ${
+                            compareVersion2.status === 'stable' ? 'bg-green-500/20 text-green-400' :
+                            compareVersion2.status === 'beta' ? 'bg-yellow-500/20 text-yellow-400' :
+                            'bg-gray-500/20 text-gray-400'
+                          }`}>
+                            {compareVersion2.status}
+                          </span>
+                        </div>
+                        {compareVersion2.description && (
+                          <div>
+                            <span className="text-gray-400">描述:</span>
+                            <p className="text-white mt-1">{compareVersion2.description}</p>
+                          </div>
+                        )}
+                        {compareVersion2.releaseDate && (
+                          <div>
+                            <span className="text-gray-400">发布日期:</span>
+                            <span className="text-white ml-2">{compareVersion2.releaseDate}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 当前结构统计（占位，待实现版本结构快照） */}
+                <div className="bg-gray-700/30 rounded-lg p-4">
+                  <h3 className="text-lg font-semibold text-white mb-4">当前产品结构统计</h3>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="text-center p-4 bg-gray-600/30 rounded-lg">
+                      <p className="text-2xl font-bold text-white">{currentStats.modules}</p>
+                      <p className="text-sm text-gray-400 mt-1">模块</p>
+                    </div>
+                    <div className="text-center p-4 bg-gray-600/30 rounded-lg">
+                      <p className="text-2xl font-bold text-white">{currentStats.subModules}</p>
+                      <p className="text-sm text-gray-400 mt-1">子模块</p>
+                    </div>
+                    <div className="text-center p-4 bg-gray-600/30 rounded-lg">
+                      <p className="text-2xl font-bold text-white">{currentStats.functions}</p>
+                      <p className="text-sm text-gray-400 mt-1">功能</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-4 text-center">
+                    * 版本结构快照功能开发中，将支持查看历史版本的结构差异
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {(!compareVersion1 || !compareVersion2) && (
+              <div className="text-center py-12 text-gray-500">
+                <GitCompare className="w-16 h-16 mx-auto mb-4 text-gray-600" />
+                <p>请选择两个版本进行对比</p>
+              </div>
+            )}
+          </div>
         </motion.div>
       </motion.div>
     </AnimatePresence>
